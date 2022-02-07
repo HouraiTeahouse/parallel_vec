@@ -17,7 +17,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
         Self {
             len: 0,
             capacity: 0,
-            storage: Param::Storage::dangling(),
+            storage: Param::dangling(),
         }
     }
 
@@ -36,7 +36,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
                 Self {
                     len: 0,
                     capacity,
-                    storage: Param::Storage::alloc(capacity),
+                    storage: Param::alloc(capacity),
                 }
             }
         }
@@ -65,10 +65,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     }
 
     #[inline]
-    pub fn get(
-        &self,
-        index: usize,
-    ) -> Option<<<Param::Storage as Storage>::Ptr as ParamPtr>::Ref<'_>> {
+    pub fn get(&self, index: usize) -> Option<Param::Ref<'_>> {
         if self.len < index {
             None
         } else {
@@ -77,10 +74,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     }
 
     #[inline]
-    pub fn get_mut(
-        &self,
-        index: usize,
-    ) -> Option<<<Param::Storage as Storage>::Ptr as ParamPtr>::MutRef<'_>> {
+    pub fn get_mut(&mut self, index: usize) -> Option<Param::MutRef<'_>> {
         if self.len < index {
             None
         } else {
@@ -95,11 +89,8 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     /// # Safety
     /// Calling this method with an out-of-bounds index is undefined behavior even if the resulting reference is not used.
     #[inline]
-    pub unsafe fn get_unchecked(
-        &self,
-        index: usize,
-    ) -> <<Param::Storage as Storage>::Ptr as ParamPtr>::Ref<'_> {
-        self.storage.as_ptr().add(index).as_ref()
+    pub unsafe fn get_unchecked(&self, index: usize) -> Param::Ref<'_> {
+        Param::as_ref(Param::as_ptr(self.storage))
     }
 
     /// Returns mutable references to elements, without doing bounds checking.
@@ -109,11 +100,8 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     /// # Safety
     /// Calling this method with an out-of-bounds index is undefined behavior even if the resulting reference is not used.
     #[inline]
-    pub unsafe fn get_unchecked_mut(
-        &self,
-        index: usize,
-    ) -> <<Param::Storage as Storage>::Ptr as ParamPtr>::MutRef<'_> {
-        self.storage.as_ptr().add(index).as_mut()
+    pub unsafe fn get_unchecked_mut(&mut self, index: usize) -> Param::MutRef<'_> {
+        Param::as_mut(self.as_mut_ptrs())
     }
 
     /// Returns a raw pointer to the slice’s buffer.
@@ -124,20 +112,20 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     /// Modifying the container referenced by this slice may cause its buffer to be reallocated, which would also make any
     /// pointers to it invalid.
     #[inline]
-    pub fn as_mut_ptrs(&mut self) -> <Param::Storage as Storage>::Ptr {
-        self.storage.as_ptr()
+    pub fn as_mut_ptrs(&mut self) -> Param::Ptr {
+        Param::as_ptr(self.storage)
     }
 
     /// Gets the individual slices for very sub-`Vec`.
     #[inline]
-    pub fn as_slices(&self) -> <<Param::Storage as Storage>::Ptr as ParamPtr>::Slices<'_> {
-        unsafe { self.storage.as_ptr().as_slices(self.len) }
+    pub fn as_slices(&self) -> Param::Slices<'_> {
+        unsafe { Param::as_slices(Param::as_ptr(self.storage), self.len) }
     }
 
     /// Gets mutable individual slices for very sub-`Vec`.
     #[inline]
-    pub fn as_slices_mut(&self) -> <<Param::Storage as Storage>::Ptr as ParamPtr>::SlicesMut<'_> {
-        unsafe { self.storage.as_ptr().as_slices_mut(self.len) }
+    pub fn as_slices_mut(&mut self) -> Param::SlicesMut<'_> {
+        unsafe { Param::as_slices_mut(self.as_mut_ptrs(), self.len) }
     }
 
     /// Swaps two elements.
@@ -155,9 +143,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
         if b >= self.len {
             panic!("ParallelVec: Index out of bounds: {}", b);
         }
-        unsafe {
-            self.swap_unchecked(a, b);
-        }
+        unsafe { self.swap_unchecked(a, b); }
     }
 
     /// Swaps two elements in the slice, without doing bounds checking.
@@ -173,9 +159,10 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     /// The caller has to ensure that `a < self.len()` and `b < self.len()`.
     #[inline]
     pub unsafe fn swap_unchecked(&mut self, a: usize, b: usize) {
-        let a_ptr = self.storage.as_ptr().add(a);
-        let b_ptr = self.storage.as_ptr().add(b);
-        a_ptr.swap(b_ptr);
+        let base = Param::as_ptr(self.storage);
+        let a_ptr = Param::add(base, a);
+        let b_ptr = Param::add(base, b);
+        Param::swap(a_ptr, b_ptr);
     }
 
     /// Shortens the vector, keeping the first `len` elements and dropping the rest.
@@ -201,11 +188,10 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
                 return;
             }
             let capacity = std::cmp::max(self.len, min_capacity);
-            let ptr = Param::Storage::alloc(capacity);
-            self.storage
-                .as_ptr()
-                .copy_to_nonoverlapping(ptr.as_ptr(), self.len);
-            self.storage.dealloc(capacity);
+            let ptr = Param::alloc(capacity);
+            let src = Param::as_ptr(self.storage);
+            Param::copy_to_nonoverlapping(src, Param::as_ptr(ptr), self.len);
+            Param::dealloc(&mut self.storage, self.capacity);
             self.storage = ptr;
             self.capacity = capacity;
         }
@@ -224,49 +210,48 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
         self.reserve(other.len);
         unsafe {
             let src = other.as_mut_ptrs();
-            let dst = self.as_mut_ptrs().add(self.len);
-            src.copy_to_nonoverlapping(dst, other.len);
+            let dst = Param::add(self.as_mut_ptrs(), self.len);
+            Param::copy_to_nonoverlapping(src, dst, other.len);
         }
         other.clear();
     }
 
     /// Appends an element to the back of a collection.
-    pub fn push(&mut self, value: <<Param::Storage as Storage>::Ptr as ParamPtr>::Param) {
+    pub fn push(&mut self, value: Param) {
         unsafe {
             self.reserve(1);
-            self.storage.as_ptr().add(self.len).write(value);
+            let ptr = Param::add(self.as_mut_ptrs(), self.len);
+            Param::write(ptr, value);
             self.len += 1;
         }
     }
 
-    pub fn pop(&mut self) -> Option<<<Param::Storage as Storage>::Ptr as ParamPtr>::Param> {
+    pub fn pop(&mut self) -> Option<Param> {
         if self.len == 0 {
             None
         } else {
             unsafe {
-                let value = self.storage.as_ptr().add(self.len).read();
+                let ptr = Param::add(self.as_mut_ptrs(), self.len);
+                let value = Param::read(ptr);
                 self.len -= 1;
                 Some(value)
             }
         }
     }
 
-    pub fn swap_remove(
-        &mut self,
-        index: usize,
-    ) -> <<Param::Storage as Storage>::Ptr as ParamPtr>::Param {
+    pub fn swap_remove(&mut self, index: usize) -> Param {
         if index >= self.len {
             panic!("ParallelVec: Index out of bounds {}", index);
         }
 
         unsafe {
-            let target_ptr = self.storage.as_ptr().add(index);
-            let value = target_ptr.read();
+            let target_ptr = Param::add(self.as_mut_ptrs(), index);
+            let value = Param::read(target_ptr);
             self.len -= 1;
 
             if self.len != index {
-                let end = self.storage.as_ptr().add(self.len);
-                target_ptr.copy_to_nonoverlapping(end, 1);
+                let end = Param::add(self.as_mut_ptrs(), self.len);
+                Param::copy_to_nonoverlapping(end, target_ptr, 1);
             }
 
             value
@@ -278,12 +263,11 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
             let new_len = self.len + additional;
             if new_len > self.capacity {
                 let capacity = new_len.next_power_of_two().max(4);
-                let ptr = Param::Storage::alloc(capacity);
-                self.storage
-                    .as_ptr()
-                    .copy_to_nonoverlapping(ptr.as_ptr(), self.len);
-                self.storage.dealloc(capacity);
-                self.storage = ptr;
+                let dst = Param::alloc(capacity);
+                let src = self.as_mut_ptrs();
+                Param::copy_to_nonoverlapping(src, Param::as_ptr(dst), self.len);
+                Param::dealloc(&mut self.storage, self.capacity);
+                self.storage = dst;
                 self.capacity = capacity;
             }
         }
@@ -310,39 +294,34 @@ impl<Param: ParallelVecParam> Extend<Param> for ParallelVec<Param> {
     }
 }
 
-pub trait ParallelVecParam {
-    type Storage: Storage;
-}
-
-pub trait Storage: Copy {
-    type Ptr: ParamPtr;
+pub trait ParallelVecParam : Sized {
+    type Storage: Copy;
+    type Ptr: Copy;
     type Offsets;
-    fn dangling() -> Self;
-    fn as_ptr(self) -> Self::Ptr;
-    unsafe fn alloc(capacity: usize) -> Self;
-    unsafe fn dealloc(&mut self, capacity: usize);
-    fn layout_for_capacity(capacity: usize) -> MemoryLayout<Self>;
-}
-
-pub trait ParamPtr: Copy {
-    type Param: ParallelVecParam;
     type Ref<'a>;
     type MutRef<'a>;
     type Slices<'a>;
     type SlicesMut<'a>;
-    unsafe fn add(self, offset: usize) -> Self;
-    unsafe fn copy_to(self, dst: Self, size: usize);
-    unsafe fn copy_to_nonoverlapping(self, dst: Self, size: usize);
-    unsafe fn as_slices<'a>(self, len: usize) -> Self::Slices<'a>;
-    unsafe fn as_slices_mut<'a>(self, len: usize) -> Self::SlicesMut<'a>;
-    unsafe fn as_ref<'a>(self) -> Self::Ref<'a>;
-    unsafe fn as_mut<'a>(self) -> Self::MutRef<'a>;
-    unsafe fn read(self) -> Self::Param;
-    unsafe fn write(self, value: Self::Param);
-    unsafe fn swap(self, other: Self);
+
+    fn dangling() -> Self::Storage;
+    fn as_ptr(storage: Self::Storage) -> Self::Ptr;
+    unsafe fn alloc(capacity: usize) -> Self::Storage;
+    unsafe fn dealloc(storage: &mut Self::Storage, capacity: usize);
+    fn layout_for_capacity(capacity: usize) -> MemoryLayout<Self>;
+
+    unsafe fn add(base: Self::Ptr, offset: usize) -> Self::Ptr;
+    unsafe fn copy_to(src: Self::Ptr, dst: Self::Ptr, size: usize);
+    unsafe fn copy_to_nonoverlapping(src: Self::Ptr, dst: Self::Ptr, size: usize);
+    unsafe fn as_slices<'a>(ptr: Self::Ptr, len: usize) -> Self::Slices<'a>;
+    unsafe fn as_slices_mut<'a>(ptr: Self::Ptr, len: usize) -> Self::SlicesMut<'a>;
+    unsafe fn as_ref<'a>(ptr: Self::Ptr) -> Self::Ref<'a>;
+    unsafe fn as_mut<'a>(ptr: Self::Ptr) -> Self::MutRef<'a>;
+    unsafe fn read(ptr: Self::Ptr) -> Self;
+    unsafe fn write(ptr: Self::Ptr, value: Self);
+    unsafe fn swap(a: Self::Ptr, other: Self::Ptr);
 }
 
-pub struct MemoryLayout<Param: Storage> {
+pub struct MemoryLayout<Param: ParallelVecParam> {
     layout: Layout,
     offsets: Param::Offsets,
 }
@@ -357,23 +336,25 @@ macro_rules! impl_parallel_vec_param {
     ($t1: ident, $($ts:ident),*) => {
         impl<$t1: 'static $(, $ts: 'static)*> ParallelVecParam for ($t1 $(, $ts)*) {
             type Storage = (NonNull<$t1> $(, NonNull<$ts>)*);
-        }
-
-        impl<$t1: 'static $(, $ts: 'static)*> Storage for (NonNull<$t1>, $(NonNull<$ts>,)*) {
+            type Ref<'a> = (&'a $t1, $(&'a $ts,)*);
+            type MutRef<'a> = (&'a mut $t1, $(&'a mut $ts,)*);
+            type Slices<'a> = (&'a [$t1] $(, &'a [$ts])*);
+            type SlicesMut<'a> = (&'a [$t1] $(, &'a [$ts])*);
             type Ptr = (*mut $t1 $(, *mut $ts)*);
             type Offsets = (usize $(, skip_first!($ts, usize))*);
+
             #[inline(always)]
-            fn dangling() -> Self {
+            fn dangling() -> Self::Storage {
                 (NonNull::dangling(), $(NonNull::<$ts>::dangling()),*)
             }
 
             #[inline(always)]
-            fn as_ptr(self) -> Self::Ptr {
-                let ($t1$(, $ts)*) = self;
+            fn as_ptr(storage: Self::Storage) -> Self::Ptr {
+                let ($t1$(, $ts)*) = storage;
                 ($t1.as_ptr() $(, $ts.as_ptr())*)
             }
 
-            unsafe fn alloc(capacity: usize) -> Self {
+            unsafe fn alloc(capacity: usize) -> Self::Storage {
                 let layout = Self::layout_for_capacity(capacity);
                 let bytes = std::alloc::alloc(layout.layout);
                 let (_ $(, $ts)*) = layout.offsets;
@@ -383,10 +364,10 @@ macro_rules! impl_parallel_vec_param {
                 )
             }
 
-            unsafe fn dealloc(&mut self, capacity: usize) {
+            unsafe fn dealloc(storage: &mut Self::Storage, capacity: usize) {
                 if capacity > 0 {
                     let layout = Self::layout_for_capacity(capacity);
-                    std::alloc::dealloc(self.0.as_ptr().cast::<u8>(), layout.layout);
+                    std::alloc::dealloc(storage.0.as_ptr().cast::<u8>(), layout.layout);
                 }
             }
 
@@ -398,25 +379,17 @@ macro_rules! impl_parallel_vec_param {
                     offsets: (0, $($ts),*)
                 }
             }
-        }
-
-        impl<$t1: 'static $(, $ts: 'static)*> ParamPtr for (*mut $t1, $(*mut $ts,)*) {
-            type Param = ($t1, $($ts,)*);
-            type Ref<'a> = (&'a $t1, $(&'a $ts,)*);
-            type MutRef<'a> = (&'a mut $t1, $(&'a mut $ts,)*);
-            type Slices<'a> = (&'a [$t1] $(, &'a [$ts])*);
-            type SlicesMut<'a> = (&'a [$t1] $(, &'a [$ts])*);
 
             #[inline(always)]
-            unsafe fn add(self, offset: usize) -> Self {
-                let ($t1, $($ts),*) = self;
+            unsafe fn add(base: Self::Ptr, offset: usize) -> Self::Ptr {
+                let ($t1, $($ts),*) = base;
                 ($t1.add(offset), $($ts.add(offset)),*)
             }
 
             #[inline(always)]
-            unsafe fn copy_to(self, dst: Self, len: usize) {
+            unsafe fn copy_to(src: Self::Ptr, dst: Self::Ptr, len: usize) {
+                let ($t1, $($ts),*) = src;
                 let ($t1, $($ts),*) = dst;
-                let ($t1, $($ts),*) = self;
                 $t1.copy_to($t1, len);
                 $(
                     $ts.copy_to($ts, len);
@@ -424,9 +397,9 @@ macro_rules! impl_parallel_vec_param {
             }
 
             #[inline(always)]
-            unsafe fn copy_to_nonoverlapping(self, dst: Self, len: usize) {
+            unsafe fn copy_to_nonoverlapping(src: Self::Ptr, dst: Self::Ptr, len: usize) {
+                let ($t1, $($ts),*) = src;
                 let ($t1, $($ts),*) = dst;
-                let ($t1, $($ts),*) = self;
                 $t1.copy_to_nonoverlapping($t1, len);
                 $(
                     $ts.copy_to_nonoverlapping($ts, len);
@@ -434,8 +407,8 @@ macro_rules! impl_parallel_vec_param {
             }
 
             #[inline(always)]
-            unsafe fn as_slices<'a>(self, len: usize) -> Self::Slices<'a> {
-                let ($t1, $($ts),*) = self;
+            unsafe fn as_slices<'a>(ptr: Self::Ptr, len: usize) -> Self::Slices<'a> {
+                let ($t1, $($ts),*) = ptr;
                 (
                     std::slice::from_raw_parts($t1, len)
                     $(
@@ -445,8 +418,8 @@ macro_rules! impl_parallel_vec_param {
             }
 
             #[inline(always)]
-            unsafe fn as_slices_mut<'a>(self, len: usize) -> Self::SlicesMut<'a> {
-                let ($t1, $($ts),*) = self;
+            unsafe fn as_slices_mut<'a>(ptr: Self::Ptr, len: usize) -> Self::SlicesMut<'a> {
+                let ($t1, $($ts),*) = ptr;
                 (
                     std::slice::from_raw_parts_mut($t1, len)
                     $(
@@ -456,25 +429,25 @@ macro_rules! impl_parallel_vec_param {
             }
 
             #[inline(always)]
-            unsafe fn as_ref<'a>(self) -> Self::Ref<'a> {
-                let ($t1, $($ts),*) = self;
+            unsafe fn as_ref<'a>(ptr: Self::Ptr) -> Self::Ref<'a> {
+                let ($t1, $($ts),*) = ptr;
                 (&*$t1 $(, &*$ts)*)
             }
 
             #[inline(always)]
-            unsafe fn as_mut<'a>(self) -> Self::MutRef<'a> {
-                let ($t1, $($ts),*) = self;
+            unsafe fn as_mut<'a>(ptr: Self::Ptr) -> Self::MutRef<'a> {
+                let ($t1, $($ts),*) = ptr;
                 (&mut *$t1 $(, &mut *$ts)*)
             }
 
             #[inline(always)]
-            unsafe fn read(self) -> Self::Param {
-                let ($t1, $($ts),*) = self;
+            unsafe fn read(ptr: Self::Ptr) -> Self {
+                let ($t1, $($ts),*) = ptr;
                 ($t1.read() $(, $ts.read())*)
             }
 
             #[inline(always)]
-            unsafe fn write(self, _: Self::Param) {
+            unsafe fn write(ptr: Self::Ptr, _: Self) {
                 // let ($t1, $($ts),*) = value;
                 // let ($t1, $($ts),*) = self;
                 // $t1.write($t1);
@@ -484,9 +457,9 @@ macro_rules! impl_parallel_vec_param {
             }
 
             #[inline(always)]
-            unsafe fn swap(self, other: Self) {
-                let ($t1, $($ts),*) = other;
-                let ($t1, $($ts),*) = self;
+            unsafe fn swap(a: Self::Ptr, b: Self::Ptr) {
+                let ($t1, $($ts),*) = a;
+                let ($t1, $($ts),*) = b;
                 std::ptr::swap($t1, $t1);
                 $(std::ptr::swap($ts, $ts);)*
             }
