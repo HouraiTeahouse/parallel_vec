@@ -171,8 +171,17 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     ///
     /// Note that this method has no effect on the allocated capacity of the vector.
     pub fn truncate(&mut self, len: usize) {
-        while self.len > len {
-            self.pop();
+        if self.len <= len {
+            return;
+        }
+        let start = len;
+        let end = self.len;
+        self.len = len;
+        unsafe {
+            let base = Param::as_ptr(self.storage);
+            for idx in start..end {
+                Param::drop(Param::add(base, idx));
+            }
         }
     }
 
@@ -201,7 +210,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     ///
     /// It will drop down as close as possible to the length but the allocator may
     /// still inform the vector that there is space for a few more elements.
-    pub fn shirnk_to_fit(&mut self) {
+    pub fn shrink_to_fit(&mut self) {
         self.shrink_to(self.len);
     }
 
@@ -276,7 +285,14 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
 
 impl<Param: ParallelVecParam> Drop for ParallelVec<Param> {
     fn drop(&mut self) {
-        self.clear();
+        self.len = 0;
+        unsafe {
+            let base = Param::as_ptr(self.storage);
+            for idx in 0..self.len {
+                Param::drop(Param::add(base, idx));
+            }
+            Param::dealloc(&mut self.storage, self.capacity);
+        }
     }
 }
 
@@ -319,6 +335,7 @@ pub trait ParallelVecParam : Sized {
     unsafe fn read(ptr: Self::Ptr) -> Self;
     unsafe fn write(ptr: Self::Ptr, value: Self);
     unsafe fn swap(a: Self::Ptr, other: Self::Ptr);
+    unsafe fn drop(ptr: Self::Ptr);
 }
 
 pub struct MemoryLayout<Param: ParallelVecParam> {
@@ -462,6 +479,12 @@ macro_rules! impl_parallel_vec_param {
                 let ($t1, $($ts),*) = b;
                 std::ptr::swap($t1, $t1);
                 $(std::ptr::swap($ts, $ts);)*
+            }
+
+            unsafe fn drop(ptr: Self::Ptr) {
+                let ($t1, $($ts),*) = ptr;
+                std::mem::drop($t1);
+                $(std::mem::drop($ts);)*
             }
         }
     }
