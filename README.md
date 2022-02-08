@@ -1,18 +1,45 @@
 # ParallelVec
 
-`ParallelVec` is a generic contiguously stored collection of heterogenous values.
-It utilizes a [structure of arrays](https://en.wikipedia.org/wiki/AoS_and_SoA#Structure_of_arrays)
-memory layout, which may increase the cache utilization for uses cases like games. It exposes an 
-API similar to a `Vec` of tuples.
+[![crates.io](https://img.shields.io/crates/v/parallel-vec.svg)](https://crates.io/crates/parallel-vec)
+[![Documentation](https://docs.rs/parallel-vec/badge.svg)](https://docs.rs/parallel-vec)
+![License](https://img.shields.io/crates/l/parallel-vec.svg)
+
+`ParallelVec` is a generic collection of contiguously stored heterogenous values with
+an API similar to that of a `Vec<(T1, T2, ...)>` but which store the data laid out as a 
+separate slice per field. The advantage of this layout is that when iterating over the 
+data only a subset need be loaded from RAM.
+
+This approach is common to game engines, and Entity-Component-Systems in particular but is
+applicable anywhere that cache coherency and memory bandwidth are important for performance.
 
 Unlike a struct of `Vec`s, only one length and capacity field is stored, and only one contiguous
 allocation is made for the entire data structs. Upon reallocation, a struct of `Vec` may apply
 additional allocation strain. `ParallelVec` only allocates once per resize.
 
-This repo is a general attempt at reimplementing https://github.com/That3Percent/soa-vec in a
-generic manner. Unlike `SoaN` in that crate, this implementation attempts to make a singular 
-generic `ParallelVec` implementation. This crate also use stablized allocator APIs instead of 
-the unstable ones.
+# Example
+```rust
+use parallel_vec::ParallelVec;
 
-Currently this project will not compile without [GAT](https://github.com/rust-lang/rfcs/blob/master/text/1598-generic_associated_types.md)
-(Generic Associated Types) enabled on Nightly.
+// #Some 'entity' data.
+struct Position { x: f64, y: f64 }
+struct Velocity { dx: f64, dy: f64 }
+struct ColdData { /* Potentially many fields omitted here */ }
+
+// Create a vec of entities
+let mut entities: ParallelVec<(Position, Velocity, ColdData)> = ParallelVec::new();
+entities.push((Position {x: 1.0, y: 2.0}, Velocity { dx: 0.0, dy: 0.5 }, ColdData {}));
+entities.push((Position {x: 0.0, y: 2.0}, Velocity { dx: 0.5, dy: 0.5 }, ColdData {}));
+
+// Update entities. This loop only loads position and velocity data, while skipping over
+// the ColdData which is not necessary for the physics simulation.
+for (position, velocity, _) in entities.iter_mut() {
+    *position = *position + *velocity;
+}
+
+// Remove an entity
+entities.swap_remove(0);
+```
+
+# Nightly
+This crate requires use of GATs and therefore requires the following nightly features:
+ * `generic_associated_types`
