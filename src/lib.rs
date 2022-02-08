@@ -1,13 +1,67 @@
 #![allow(non_snake_case)]
+#![deny(missing_docs)]
 #![feature(generic_associated_types)]
+
+//! [`ParallelVec`] is a generic collectios with an API similar to that of a `Vec<(T1, T2, ...)>`
+//! but which store the data laid out as a separate slice per field. The advantage of this
+//! layout is that when iterating over the data only a subset need be loaded from RAM.
+//!
+//! This approach is common to game engines, and Entity-Component-Systems in particular but is
+//! applicable anywhere that cache coherency and memory bandwidth are important for performance.
+//!
+//! # Example
+//! ```rust
+//! use parallel_vec::ParallelVec;
+//!
+//! /// Some 'entity' data.
+//! # #[derive(Copy, Clone)]
+//! struct Position { x: f64, y: f64 }
+//! # #[derive(Copy, Clone)]
+//! struct Velocity { dx: f64, dy: f64 }
+//! struct ColdData { /* Potentially many fields omitted here */ }
+//!
+//! # use std::ops::Add;
+//! # impl Add<Velocity> for Position { type Output=Self; fn add(self, other: Velocity) -> Self { Self { x: self.x + other.dx, y: self.y + other.dy } } }
+//! // Create a vec of entities
+//! let mut entities: ParallelVec<(Position, Velocity, ColdData)> = ParallelVec::new();
+//! entities.push((Position {x: 1.0, y: 2.0}, Velocity { dx: 0.0, dy: 0.5 }, ColdData {}));
+//! entities.push((Position {x: 0.0, y: 2.0}, Velocity { dx: 0.5, dy: 0.5 }, ColdData {}));
+//!
+//! // Update entities. This loop only loads position and velocity data, while skipping over
+//! // the ColdData which is not necessary for the physics simulation.
+//! for (position, velocity, _) in entities.iter_mut() {
+//! 	*position = *position + *velocity;
+//! }
+//!
+//! // Remove an entity
+//! entities.swap_remove(0);
+//! ```
+//!
+//! # Nightly
+//! This crate requires use of GATs and therefore requires the following nightly features:
+//! * generic_associated_types
+
+/// A collection of iterators types for [`ParallelVec`].
+pub mod iter;
+/// Implementations for [`ParallelVecParam`].
+pub mod param;
+
+pub use param::ParallelVecParam;
+
+use iter::*;
 use std::marker::PhantomData;
 
-pub mod iter;
-mod param;
-
-pub use param::*;
-use iter::*;
-
+/// A contiguously growable heterogenous array type.
+///
+/// This type stores the values [structure of arrays] layout. This layout
+/// may improve cache utilizatoin in specific use cases, which may have.
+///
+/// Unlike a struct of `Vec`s, this type allocates memory for the all individual
+/// fields simultaneously. This may minimize memory fragmentation and decrease
+/// allocation pressure. It also only stores one length and capacity instead
+/// of duplicating the values across multiple `Vec` fields.
+///
+/// [structures of arrays]:
 pub struct ParallelVec<Param: ParallelVecParam> {
     len: usize,
     capacity: usize,
@@ -69,6 +123,10 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
         self.truncate(0);
     }
 
+    /// Returns a immutable reference to the element at `index`, if available, or
+    /// [`None`] if it is out of bounds.
+    ///
+    /// [`None`]: Option::None
     #[inline]
     pub fn get<'a>(&'a self, index: usize) -> Option<Param::Ref<'a>> {
         if self.len <= index {
@@ -78,12 +136,48 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
         }
     }
 
+    /// Returns a mutable reference to the element at `index`, if available, or
+    /// [`None`] if it is out of bounds.
+    ///
+    /// [`None`]: Option::None
     #[inline]
     pub fn get_mut<'a>(&'a mut self, index: usize) -> Option<Param::RefMut<'a>> {
         if self.len <= index {
             None
         } else {
             unsafe { Some(self.get_unchecked_mut(index)) }
+        }
+    }
+
+    /// Returns the first element of the `ParallelVec`, or `None` if it is empty.
+    #[inline(always)]
+    pub fn first<'a>(&'a self) -> Option<Param::Ref<'a>> {
+        self.get(0)
+    }
+
+    /// Returns the mutable pointer first element of the `ParallelVec`, or `None` if it is empty.
+    #[inline(always)]
+    pub fn first_mut<'a>(&'a mut self) -> Option<Param::RefMut<'a>> {
+        self.get_mut(0)
+    }
+
+    /// Returns the last element of the `ParallelVec`, or `None` if it is empty.
+    #[inline]
+    pub fn last<'a>(&'a self) -> Option<Param::Ref<'a>> {
+        if self.len == 0 {
+            None
+        } else {
+            unsafe { Some(self.get_unchecked(self.len - 1)) }
+        }
+    }
+
+    /// Returns the mutable pointer last element of the `ParallelVec`, or `None` if it is empty.
+    #[inline]
+    pub fn last_mut<'a>(&'a mut self) -> Option<Param::RefMut<'a>> {
+        if self.len == 0 {
+            None
+        } else {
+            unsafe { Some(self.get_unchecked_mut(self.len - 1)) }
         }
     }
 
@@ -119,6 +213,8 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     ///
     /// # Safety
     /// Calling this method with an out-of-bounds index is undefined behavior even if the resulting reference is not used.
+    ///
+    /// [`get`]: Self::get
     #[inline]
     pub unsafe fn get_unchecked<'a>(&'a self, index: usize) -> Param::Ref<'a> {
         let ptr = Param::as_ptr(self.storage);
@@ -131,6 +227,8 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     ///
     /// # Safety
     /// Calling this method with an out-of-bounds index is undefined behavior even if the resulting reference is not used.
+    ///
+    /// [`get_mut`]: Self::get_mut
     #[inline]
     pub unsafe fn get_unchecked_mut<'a>(&'a mut self, index: usize) -> Param::RefMut<'a> {
         let ptr = self.as_mut_ptrs();
@@ -192,6 +290,8 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     /// # Safety
     /// Calling this method with an out-of-bounds index is undefined behavior.
     /// The caller has to ensure that `a < self.len()` and `b < self.len()`.
+    ///
+    /// [`swap`]: Self::swap
     #[inline]
     pub unsafe fn swap_unchecked(&mut self, a: usize, b: usize) {
         let base = Param::as_ptr(self.storage);
@@ -220,6 +320,16 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
         }
     }
 
+    /// Reverses the order of elements in the [`ParallelVec`], in place.
+    ///
+    /// This is a `O(n)` operation.
+    pub fn reverse(&mut self) {
+        if self.len == 0 {
+            return;
+        }
+        Param::reverse(self.as_slices_mut())
+    }
+
     /// Shrinks the capacity of the vector with a lower bound.
     ///
     /// The capacity will remain at least as large as both the length and
@@ -238,6 +348,32 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
             Param::dealloc(&mut self.storage, self.capacity);
             self.storage = dst;
             self.capacity = capacity;
+        }
+    }
+
+    /// Swaps all elements in `self` with those in `other`.
+    ///
+    /// The length of other must be the same as `self`.  
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the two slices have different lengths.
+    pub fn swap_with(&mut self, other: &mut Self) {
+        if self.len != other.len {
+            panic!(
+                "ParallelVec: attempted to use swap_with with ParallelVecs of different lenghths: {} vs {}",
+                self.len,
+                other.len
+            )
+        }
+        unsafe {
+            let mut a = self.as_mut_ptrs();
+            let mut b = other.as_mut_ptrs();
+            for _ in 0..self.len {
+                Param::swap(a, b);
+                a = Param::add(a, 1);
+                b = Param::add(b, 1);
+            }
         }
     }
 
@@ -272,6 +408,10 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
         }
     }
 
+    /// Removes the last element from the vector and returns it,
+    /// or [`None`] if it is empty.
+    ///
+    /// [`None`]: Option::None
     pub fn pop(&mut self) -> Option<Param> {
         if self.len == 0 {
             None
@@ -285,6 +425,14 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
         }
     }
 
+    /// Removes an element from the vector and returns it.
+    ///
+    /// The removed element is replaced by the last element of the vector.  
+    ///
+    /// This does not preserve ordering, but is `O(1)`. If you need to
+    /// preserve the element order, use [`remove`] instead.
+    ///
+    /// [`remove`]: Self::remove
     pub fn swap_remove(&mut self, index: usize) -> Param {
         if index >= self.len {
             panic!("ParallelVec: Index out of bounds {}", index);
@@ -341,6 +489,11 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
         }
     }
 
+    /// Reserves capacity for at least `additional` more elements to be inserted in the
+    /// given [`ParallelVec`]. The collection may reserve more space to avoid frequent
+    /// reallocations. After calling reserve, capacity will be greater than or
+    /// equal to `self.len() + additional`. Does nothing if capacity is already
+    /// sufficient.
     pub fn reserve(&mut self, additional: usize) {
         unsafe {
             let new_len = self.len + additional;
@@ -356,6 +509,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
         }
     }
 
+    /// Returns an iterator over the [`ParallelVec`].
     pub fn iter(&self) -> Iter<'_, Param> {
         Iter {
             base: Param::as_ptr(self.storage),
@@ -365,12 +519,75 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
         }
     }
 
+    /// Returns an iterator that allows modifying each value.
     pub fn iter_mut(&mut self) -> IterMut<'_, Param> {
         IterMut {
             base: self.as_mut_ptrs(),
             idx: 0,
             len: self.len,
             _marker: PhantomData,
+        }
+    }
+
+    /// Returns an iterator over the [`ParallelVec`].
+    pub fn iters<'a>(&'a self) -> Param::Iters<'a> {
+        unsafe {
+            let ptr = Param::as_ptr(self.storage);
+            let slices = Param::as_slices(ptr, self.len);
+            Param::iters(slices)
+        }
+    }
+
+    /// Gets individual iterators.
+    pub fn iters_mut<'a>(&'a mut self) -> Param::ItersMut<'a> {
+        unsafe {
+            let ptr = Param::as_ptr(self.storage);
+            let slices = Param::as_slices_mut(ptr, self.len);
+            Param::iters_mut(slices)
+        }
+    }
+}
+
+impl<Param: ParallelVecParam + Copy> ParallelVec<Param> {
+    /// Creates a [`ParallelVec`] by repeating `self` `n` times.
+    pub fn repeat(&self, n: usize) -> ParallelVec<Param> {
+        let mut new = ParallelVec::with_capacity(n * self.len);
+        let mut dst = Param::as_ptr(new.storage);
+        new.len = n * self.len;
+        unsafe {
+            let base = Param::as_ptr(self.storage);
+            for _ in 0..n {
+                for idx in 0..self.len {
+                    let value = Param::read(Param::add(base, idx));
+                    Param::write(dst, value.clone());
+                    dst = Param::add(dst, 1);
+                }
+            }
+        }
+        new
+    }
+}
+
+impl<Param: ParallelVecParam + Clone> ParallelVec<Param> {
+    /// Fills self with elements by cloning value.
+    #[inline(always)]
+    pub fn fill(&mut self, value: Param) {
+        self.fill_with(|| value.clone());
+    }
+}
+
+impl<Param: ParallelVecParam> ParallelVec<Param> {
+    /// Fills self with elements returned by calling a closure repeatedly.
+    ///
+    /// This method uses a closure to create new values. If you’d rather [`Clone`]
+    /// a given value, use fill. If you want to use the [`Default`] trait to generate
+    /// values, you can pass `Default::default` as the argument.
+    pub fn fill_with<F: FnMut() -> Param>(&mut self, mut f: F) {
+        unsafe {
+            let base = self.as_mut_ptrs();
+            for idx in 0..self.len {
+                Param::write(Param::add(base, idx), f());
+            }
         }
     }
 }
@@ -385,6 +602,14 @@ impl<Param: ParallelVecParam> Drop for ParallelVec<Param> {
             }
             Param::dealloc(&mut self.storage, self.capacity);
         }
+    }
+}
+
+impl<Param: ParallelVecParam> IntoIterator for ParallelVec<Param> {
+    type Item = Param;
+    type IntoIter = IntoIter<Param>;
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter { vec: self, idx: 0 }
     }
 }
 
@@ -422,18 +647,16 @@ impl<Param: ParallelVecParam> Default for ParallelVec<Param> {
     }
 }
 
+/// Error when attempting to convert types to [`ParallelVec`].
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum ParallelVecConversionError {
+    /// The provided inputs were not the same length.
     UnevenLengths,
 }
 
 #[cfg(test)]
 mod tests {
     use super::ParallelVec;
-    use testdrop::TestDrop;
-
-    fn assert_all_dropped(td: &TestDrop) {
-        assert_eq!(td.num_dropped_items(), td.num_tracked_items());
-    }
 
     #[test]
     fn layouts_do_not_overlap() {
@@ -471,41 +694,6 @@ mod tests {
             assert_eq!(ba(i).1, a[i]);
         }
     }
-
-    // #[test]
-    // fn sort() {
-    //     let mut vec = ParallelVec::new();
-
-    //     vec.push((3, 'a', 4.0));
-    //     vec.push((1, 'b', 5.0));
-    //     vec.push((2, 'c', 6.0));
-
-    //     vec.sort_unstable_by(|(a1, _, _), (a2, _, _)| a1.cmp(a2));
-
-    //     assert_eq!(vec.index(0), (&1, &('b'), &5.0));
-    //     assert_eq!(vec.index(1), (&2, &('c'), &6.0));
-    //     assert_eq!(vec.index(2), (&3, &('a'), &4.0));
-    // }
-
-    // #[test]
-    // fn drops() {
-    //     let td = TestDrop::new();
-    //     let (id, item) = td.new_item();
-    //     {
-    //         let mut soa = ParallelVec::new();
-    //         soa.push((1.0, item));
-    //         // Did not drop when moved into the soa
-    //         td.assert_no_drop(id);
-    //         // Did not drop through resizing the soa.
-    //         for _ in 0..50 {
-    //             soa.push((2.0, td.new_item().1));
-    //         }
-    //         td.assert_no_drop(id);
-    //     }
-    //     // Dropped with the soa
-    //     td.assert_drop(id);
-    //     assert_all_dropped(&td);
-    // }
 
     #[test]
     fn clones() {

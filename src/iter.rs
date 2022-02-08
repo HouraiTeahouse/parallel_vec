@@ -1,6 +1,12 @@
-use crate::ParallelVecParam;
+use crate::{ParallelVec, ParallelVecParam};
 use std::marker::PhantomData;
 
+/// An iterator over immutable references to values in a [`ParallelVec`].
+///
+/// See [`ParallelVec::iter`].
+///
+/// [`ParallelVec`]: crate::ParallelVec
+/// [`ParallelVec::iter`]: crate::ParallelVec::iter
 pub struct Iter<'a, Param: ParallelVecParam> {
     pub(crate) base: Param::Ptr,
     pub(crate) idx: usize,
@@ -23,6 +29,12 @@ impl<'a, Param: ParallelVecParam> Iterator for Iter<'a, Param> {
     }
 }
 
+/// An iterator over mutable reference to values in a [`ParallelVec`].
+///
+/// See [`ParallelVec::iter_mut`].
+///
+/// [`ParallelVec`]: crate::ParallelVec
+/// [`ParallelVec::iter_mut`]: crate::ParallelVec::iter_mut
 pub struct IterMut<'a, Param: ParallelVecParam> {
     pub(crate) base: Param::Ptr,
     pub(crate) idx: usize,
@@ -39,6 +51,33 @@ impl<'a, Param: ParallelVecParam> Iterator for IterMut<'a, Param> {
             }
             let ptr = Param::add(self.base, self.idx);
             let value = Param::as_mut(ptr);
+            self.idx += 1;
+            Some(value)
+        }
+    }
+}
+
+/// An iterator over values from a [`ParallelVec`].
+///
+/// See [`ParallelVec::into_iter`].
+///
+/// [`ParallelVec`]: crate::ParallelVec
+/// [`ParallelVec::iter_mut`]: crate::ParallelVec::into_iter
+pub struct IntoIter<Param: ParallelVecParam> {
+    pub(crate) vec: ParallelVec<Param>,
+    pub(crate) idx: usize,
+}
+
+impl<Param: ParallelVecParam> Iterator for IntoIter<Param> {
+    type Item = Param;
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            if self.idx >= self.vec.len {
+                return None;
+            }
+            let base = self.vec.as_mut_ptrs();
+            let ptr = Param::add(base, self.idx);
+            let value = Param::read(ptr);
             self.idx += 1;
             Some(value)
         }

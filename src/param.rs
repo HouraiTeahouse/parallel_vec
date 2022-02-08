@@ -5,20 +5,36 @@ use std::ptr::NonNull;
 /// This trait contains the basic operations for creating variadic
 /// parallel vector implementations.
 ///
-/// This trait is sealed and cannot be implemented outside of 
+/// This trait is sealed and cannot be implemented outside of
 /// `parallel_vec`.
+///
+/// This trait has blanket implementations of all tuples of up
+/// to size 12 of all types that are `'static`.
 ///
 /// # Safety
 /// None of the associated functions can panic.
 pub unsafe trait ParallelVecParam: Sized + private::Sealed {
+    /// A set of [`NonNull`] pointers of the parameter.
+    /// This is the main backing storage pointers for [`ParallelVec`].
     type Storage: Copy;
+    /// A set of pointers of the parameter.
     type Ptr: Copy;
+    /// A set of memory offsets of the parameter.
     type Offsets;
+    /// A set of immutable references of the parameter.
     type Ref<'a>;
+    /// A set of mutable references of the parameter.
     type RefMut<'a>;
+    /// A set of [`Vec<T>`]s of the parameter.
     type Vecs;
+    /// A set of mutable slice references of the parameter.
     type Slices<'a>;
+    /// A set of mutable slice references of the parameter.
     type SlicesMut<'a>;
+    /// A set of iterators of immutable references of the parameter.
+    type Iters<'a>;
+    /// A set of iterators of mutable references of the parameter.
+    type ItersMut<'a>;
 
     /// Creates a set of dangling pointers for the given types.
     fn dangling() -> Self::Storage;
@@ -97,6 +113,15 @@ pub unsafe trait ParallelVecParam: Sized + private::Sealed {
     /// for the allocation that `ptr` points to.
     unsafe fn as_slices_mut<'a>(ptr: Self::Ptr, len: usize) -> Self::SlicesMut<'a>;
 
+    /// Creates a set of iterators from slices.
+    fn iters<'a>(slices: Self::Slices<'a>) -> Self::Iters<'a>;
+
+    /// Creates a set of iterators of mutable references from slices.
+    fn iters_mut<'a>(slices: Self::SlicesMut<'a>) -> Self::ItersMut<'a>;
+
+    /// Reverses the order of elements in the slice, in place.
+    fn reverse<'a>(ptr: Self::SlicesMut<'a>);
+
     /// Converts `ptr` into a set of immutable references.
     ///
     /// # Safety
@@ -135,6 +160,10 @@ pub unsafe trait ParallelVecParam: Sized + private::Sealed {
     unsafe fn drop(ptr: Self::Ptr);
 }
 
+/// Memory layout information for creating a [`ParallelVec`].
+///
+/// Users will not need to deal with this type directly, as there
+/// is no way to instantiate a copy of this struct safely.
 pub struct MemoryLayout<Param: ParallelVecParam> {
     layout: Layout,
     offsets: Param::Offsets,
@@ -179,6 +208,8 @@ macro_rules! impl_parallel_vec_param {
             type Vecs = (Vec<$t1> $(, Vec<$ts>)*);
             type Ptr = (*mut $t1 $(, *mut $ts)*);
             type Offsets = (usize $(, skip_first!($ts, usize))*);
+            type Iters<'a> = (std::slice::Iter<'a, $t1> $(, std::slice::Iter<'a, $ts>)*);
+            type ItersMut<'a>= (std::slice::IterMut<'a, $t1> $(, std::slice::IterMut<'a, $ts>)*);
 
             #[inline(always)]
             fn dangling() -> Self::Storage {
@@ -261,6 +292,25 @@ macro_rules! impl_parallel_vec_param {
                         , std::slice::from_raw_parts_mut($ts, len)
                     )*
                 )
+            }
+
+            #[inline(always)]
+            fn iters<'a>(slices: Self::Slices<'a>) -> Self::Iters<'a> {
+                let ($t1, $($ts),*) = slices;
+                ($t1.iter() $(, $ts.iter())*)
+            }
+
+            #[inline(always)]
+            fn iters_mut<'a>(slices: Self::SlicesMut<'a>) -> Self::ItersMut<'a> {
+                let ($t1, $($ts),*) = slices;
+                ($t1.iter_mut() $(, $ts.iter_mut())*)
+            }
+
+            #[inline(always)]
+            fn reverse<'a>(slices: Self::SlicesMut<'a>) {
+                let ($t1, $($ts),*) = slices;
+		$t1.reverse();
+		$($ts.reverse();)*
             }
 
             #[inline(always)]
