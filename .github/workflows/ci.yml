@@ -46,7 +46,7 @@ jobs:
           args: --all-features
           
       - uses: actions-rs/cargo@v1
-        if: runner.std == 'no-std'
+        if: matrix.std == 'no-std'
         with:
           command: build
           args: --no-default-flags
@@ -55,7 +55,7 @@ jobs:
           RUSTFLAGS: "-C debuginfo=0"
 
       - uses: actions-rs/cargo@v1
-        if: runner.std == 'std'
+        if: matrix.std == 'std'
         with:
           command: test
         env:
