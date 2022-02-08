@@ -15,7 +15,7 @@
 //! allocation is made for the entire data structs. Upon reallocation, a struct of `Vec` may apply
 //!  additional allocation strain. `ParallelVec` only allocates once per resize.
 //!
-//! # Example
+//! ## Example
 //! ```rust
 //! use parallel_vec::ParallelVec;
 //!
@@ -43,11 +43,11 @@
 //! entities.swap_remove(0);
 //! ```
 //!
-//! # Nightly
+//! ## Nightly
 //! This crate requires use of GATs and therefore requires the following nightly features:
 //! * `generic_associated_types`
 //!
-//!  # `no_std` Support
+//! ## `no_std` Support
 //! By default, this crate requires the standard library. Disabling the default features
 //! enables this crate to compile in `#![no_std]` environments. There must be a set global
 //! allocator and heap support for this crate to work.
