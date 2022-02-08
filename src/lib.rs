@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 #![feature(generic_associated_types)]
 use std::alloc::Layout;
+use std::marker::PhantomData;
 use std::ptr::NonNull;
 
 pub struct ParallelVec<Param: ParallelVecParam> {
@@ -65,7 +66,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     }
 
     #[inline]
-    pub fn get(&self, index: usize) -> Option<Param::Ref<'_>> {
+    pub fn get<'a>(&'a self, index: usize) -> Option<Param::Ref<'a>> {
         if self.len <= index {
             None
         } else {
@@ -74,11 +75,37 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     }
 
     #[inline]
-    pub fn get_mut(&mut self, index: usize) -> Option<Param::RefMut<'_>> {
+    pub fn get_mut<'a>(&'a mut self, index: usize) -> Option<Param::RefMut<'a>> {
         if self.len <= index {
             None
         } else {
             unsafe { Some(self.get_unchecked_mut(index)) }
+        }
+    }
+
+    /// Gets a immutable reference to the elements at `index`.
+    ///
+    /// # Panics
+    /// This function will panic if `index` is >= `self.len`.
+    #[inline]
+    pub fn index(&self, index: usize) -> Param::Ref<'_> {
+        if self.len <= index {
+            panic!("ParallelVec: Index out of bounds: {}", index);
+        } else {
+            unsafe { self.get_unchecked(index) }
+        }
+    }
+
+    /// Gets a mutable reference to the elements at `index`.
+    ///
+    /// # Panics
+    /// This function will panic if `index` is >= `self.len`.
+    #[inline]
+    pub fn index_mut<'a>(&'a mut self, index: usize) -> Param::RefMut<'a> {
+        if self.len <= index {
+            panic!("ParallelVec: Index out of bounds: {}", index);
+        } else {
+            unsafe { self.get_unchecked_mut(index) }
         }
     }
 
@@ -89,7 +116,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     /// # Safety
     /// Calling this method with an out-of-bounds index is undefined behavior even if the resulting reference is not used.
     #[inline]
-    pub unsafe fn get_unchecked(&self, index: usize) -> Param::Ref<'_> {
+    pub unsafe fn get_unchecked<'a>(&'a self, index: usize) -> Param::Ref<'a> {
         let ptr = Param::as_ptr(self.storage);
         Param::as_ref(Param::add(ptr, index))
     }
@@ -101,7 +128,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     /// # Safety
     /// Calling this method with an out-of-bounds index is undefined behavior even if the resulting reference is not used.
     #[inline]
-    pub unsafe fn get_unchecked_mut(&mut self, index: usize) -> Param::RefMut<'_> {
+    pub unsafe fn get_unchecked_mut<'a>(&'a mut self, index: usize) -> Param::RefMut<'a> {
         let ptr = self.as_mut_ptrs();
         Param::as_mut(Param::add(ptr, index))
     }
@@ -145,7 +172,9 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
         if b >= self.len {
             panic!("ParallelVec: Index out of bounds: {}", b);
         }
-        unsafe { self.swap_unchecked(a, b); }
+        unsafe {
+            self.swap_unchecked(a, b);
+        }
     }
 
     /// Swaps two elements in the slice, without doing bounds checking.
@@ -199,11 +228,11 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
                 return;
             }
             let capacity = std::cmp::max(self.len, min_capacity);
-            let ptr = Param::alloc(capacity);
             let src = Param::as_ptr(self.storage);
-            Param::copy_to_nonoverlapping(src, Param::as_ptr(ptr), self.len);
+            let dst = Param::alloc(capacity);
+            Param::copy_to_nonoverlapping(src, Param::as_ptr(dst), self.len);
             Param::dealloc(&mut self.storage, self.capacity);
-            self.storage = ptr;
+            self.storage = dst;
             self.capacity = capacity;
         }
     }
@@ -223,8 +252,10 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
             let src = other.as_mut_ptrs();
             let dst = Param::add(self.as_mut_ptrs(), self.len);
             Param::copy_to_nonoverlapping(src, dst, other.len);
+            // No need to drop from the other vec, data has been moved to
+            // the current one. Just set the length here.
+            other.len = 0;
         }
-        other.clear();
     }
 
     /// Appends an element to the back of a collection.
@@ -269,6 +300,43 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
         }
     }
 
+    /// Inserts a value at `index`. Moves all of the elements above
+    /// `index` up one index. This is a `O(N)` operation.
+    ///
+    /// # Panics
+    /// This function will panic if `index` is greater than or equal to
+    /// `len()`.
+    pub fn insert(&mut self, index: usize, value: Param) {
+        if index > self.len {
+            panic!("ParallelVec: Index out of bounds {}", index);
+        }
+        unsafe {
+            // TODO: (Performance) In the case where we do grow, this can result in redundant copying.
+            self.reserve(1);
+            let ptr = Param::add(self.as_mut_ptrs(), index);
+            Param::copy_to(ptr, Param::add(ptr, 1), self.len - index);
+            Param::write(ptr, value);
+            self.len += 1;
+        }
+    }
+
+    /// Removes a value at `index`. Moves all of the elements above
+    /// `index` down one index. This is a `O(N)` operation.
+    ///
+    /// Returns `None` if `index` is is greater than or equal to `len()`.
+    pub fn remove(&mut self, index: usize) -> Option<Param> {
+        if index >= self.len {
+            return None;
+        }
+        unsafe {
+            let ptr = Param::add(self.as_mut_ptrs(), index);
+            let value = Param::read(ptr);
+            Param::copy_to(Param::add(ptr, 1), ptr, self.len - index - 1);
+            self.len -= 1;
+            Some(value)
+        }
+    }
+
     pub fn reserve(&mut self, additional: usize) {
         unsafe {
             let new_len = self.len + additional;
@@ -281,6 +349,24 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
                 self.storage = dst;
                 self.capacity = capacity;
             }
+        }
+    }
+
+    pub fn iter(&self) -> Iter<'_, Param> {
+        Iter {
+            base: Param::as_ptr(self.storage),
+            idx: 0,
+            len: self.len,
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn iter_mut(&mut self) -> IterMut<'_, Param> {
+        IterMut {
+            base: self.as_mut_ptrs(),
+            idx: 0,
+            len: self.len,
+            _marker: PhantomData,
         }
     }
 }
@@ -312,9 +398,79 @@ impl<Param: ParallelVecParam> Extend<Param> for ParallelVec<Param> {
     }
 }
 
-/// This trait should generally not be implemented by users. Please use the 
+impl<Param: ParallelVecParam + Clone> Clone for ParallelVec<Param> {
+    fn clone(&self) -> Self {
+        let mut clone = Self::with_capacity(self.len);
+        unsafe {
+            let base = Param::as_ptr(self.storage);
+            for idx in 0..self.len {
+                let value = Param::read(Param::add(base, idx));
+                clone.push(value.clone());
+            }
+        }
+        clone
+    }
+}
+
+impl<Param: ParallelVecParam> Default for ParallelVec<Param> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub struct Iter<'a, Param: ParallelVecParam> {
+    base: Param::Ptr,
+    idx: usize,
+    len: usize,
+    _marker: PhantomData<&'a Param>,
+}
+
+impl<'a, Param: ParallelVecParam> Iterator for Iter<'a, Param> {
+    type Item = Param::Ref<'a>;
+    fn next(&mut self) -> Option<Param::Ref<'a>> {
+        unsafe {
+            if self.idx >= self.len {
+                return None;
+            }
+            let ptr = Param::add(self.base, self.idx);
+            let value = Param::as_ref(ptr);
+            self.idx += 1;
+            Some(value)
+        }
+    }
+}
+
+pub struct IterMut<'a, Param: ParallelVecParam> {
+    base: Param::Ptr,
+    idx: usize,
+    len: usize,
+    _marker: PhantomData<&'a Param>,
+}
+
+impl<'a, Param: ParallelVecParam> Iterator for IterMut<'a, Param> {
+    type Item = Param::RefMut<'a>;
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            if self.idx >= self.len {
+                return None;
+            }
+            let ptr = Param::add(self.base, self.idx);
+            let value = Param::as_mut(ptr);
+            self.idx += 1;
+            Some(value)
+        }
+    }
+}
+
+/// This trait contains the basic operations for creating variadic
+/// parallel vector implementations.
+///
+/// This trait should generally not be implemented by users. Please use the
 /// tuple implementations where possible.
-pub unsafe trait ParallelVecParam : Sized {
+///
+/// # Safety
+/// None of the associated functions can panic.
+pub unsafe trait ParallelVecParam: Sized {
     type Storage: Copy;
     type Ptr: Copy;
     type Offsets;
@@ -332,17 +488,17 @@ pub unsafe trait ParallelVecParam : Sized {
     fn as_ptr(storage: Self::Storage) -> Self::Ptr;
 
     /// Allocates a buffer for a given capacity.
-    /// 
+    ///
     /// # Safety
     /// Capacity should be non-zero.
     unsafe fn alloc(capacity: usize) -> Self::Storage;
 
     /// Deallocates a buffer allocated from [`alloc`].
-    /// 
+    ///
     /// # Safety
     /// `storage` must have been allocated from [`alloc`] alongside
     /// the provided `capacity`.
-    /// 
+    ///
     /// [`alloc`]: Self::alloc
     unsafe fn dealloc(storage: &mut Self::Storage, capacity: usize);
 
@@ -350,91 +506,91 @@ pub unsafe trait ParallelVecParam : Sized {
     fn layout_for_capacity(capacity: usize) -> MemoryLayout<Self>;
 
     /// Gets the legnth for the associated `Vec`s.
-    /// 
+    ///
     /// Returns `None` if not all of the `Vec`s share the same
     /// length.
     fn get_vec_len(vecs: &Self::Vecs) -> Option<usize>;
 
     /// Gets the underlying pointers for the associated `Vec`s.
-    /// 
+    ///
     /// # Safety
     /// The provided `Vec`s must be correctly allocated.
     unsafe fn get_vec_ptrs(vecs: &mut Self::Vecs) -> Self::Ptr;
 
     /// Adds `offset` to all of the pointers in `base`.
-    /// 
+    ///
     /// # Safety
-    /// `base` and `base + offset` must be valid non-null pointers for 
+    /// `base` and `base + offset` must be valid non-null pointers for
     /// the associated types.
     unsafe fn add(base: Self::Ptr, offset: usize) -> Self::Ptr;
 
-    /// Copies `size` elements from the continguous memory pointed to by `src` into 
+    /// Copies `size` elements from the continguous memory pointed to by `src` into
     /// `dst`.
-    /// 
+    ///
     /// # Safety
-    ///  - `src` and `dst` must be a valid, non-null pointer for the associated types. 
+    ///  - `src` and `dst` must be a valid, non-null pointer for the associated types.
     ///  - `size` must be approriately set for the allocation that both `src` and `dst`
-    ///    point to. 
+    ///    point to.
     unsafe fn copy_to(src: Self::Ptr, dst: Self::Ptr, size: usize);
 
-    /// Copies `size` elements from the continguous memory pointed to by `src` into 
+    /// Copies `size` elements from the continguous memory pointed to by `src` into
     /// `dst`.
-    /// 
+    ///
     /// # Safety
-    ///  - `src` and `dst` must be a valid, non-null pointer for the associated types. 
+    ///  - `src` and `dst` must be a valid, non-null pointer for the associated types.
     ///  - `size` must be approriately set for the allocation that both `src` and `dst`
-    ///    point to. 
+    ///    point to.
     ///  - `src..src + size` must not overlap with the memory range of `dst..dst + size`.
     unsafe fn copy_to_nonoverlapping(src: Self::Ptr, dst: Self::Ptr, size: usize);
 
     /// Creates a set of immutable slices from `ptr` and a provided length.
-    /// 
+    ///
     /// # Safety
     /// `ptr` must be a valid, non-null pointer. `len` must be approriately set
     /// for the allocation that `ptr` points to.
     unsafe fn as_slices<'a>(ptr: Self::Ptr, len: usize) -> Self::Slices<'a>;
 
     /// Creates a set of mutable slices from `ptr` and a provided length.
-    /// 
+    ///
     /// # Safety
     /// `ptr` must be a valid, non-null pointer. `len` must be approriately set
     /// for the allocation that `ptr` points to.
     unsafe fn as_slices_mut<'a>(ptr: Self::Ptr, len: usize) -> Self::SlicesMut<'a>;
 
     /// Converts `ptr` into a set of immutable references.
-    /// 
+    ///
     /// # Safety
     /// `ptr` must be a valid, non-null pointer.
     unsafe fn as_ref<'a>(ptr: Self::Ptr) -> Self::Ref<'a>;
 
     /// Converts `ptr` into a set of mutable references.
-    /// 
+    ///
     /// # Safety
     /// `ptr` must be a valid, non-null pointer.
     unsafe fn as_mut<'a>(ptr: Self::Ptr) -> Self::RefMut<'a>;
 
     /// Reads the values to pointed to by `ptr`.
-    /// 
+    ///
     /// # Safety
     /// `ptr` must be a valid, non-null pointer.
     unsafe fn read(ptr: Self::Ptr) -> Self;
 
     /// Writes `value` to `ptr`.
-    /// 
+    ///
     /// # Safety
     /// `ptr` must be a valid, non-null pointer.
     unsafe fn write(ptr: Self::Ptr, value: Self);
 
     /// Swaps the values pointed to by the provided pointers.
-    /// 
+    ///
     /// # Safety
     /// Both `a` and `b` must be valid for all of it's consitutent member pointers.
     unsafe fn swap(a: Self::Ptr, other: Self::Ptr);
 
     /// Drops the values pointed to by the pointers.
-    /// 
+    ///
     /// # Safety
-    /// The caller must ensure that the values pointed to by the pointers have 
+    /// The caller must ensure that the values pointed to by the pointers have
     /// not already been dropped prior.
     unsafe fn drop(ptr: Self::Ptr);
 }
@@ -637,6 +793,128 @@ impl_parallel_vec_param!(T1, V1, T2, V2, T3, V3, T4, V4, T5, V5, T6, V6);
 impl_parallel_vec_param!(T1, V1, T2, V2, T3, V3, T4, V4, T5, V5, T6, V6, T7, V7);
 impl_parallel_vec_param!(T1, V1, T2, V2, T3, V3, T4, V4, T5, V5, T6, V6, T7, V7, T8, V8);
 impl_parallel_vec_param!(T1, V1, T2, V2, T3, T4, V3, V4, T5, V5, T6, V6, T7, V7, T8, V8, T9, V9);
-impl_parallel_vec_param!(T1, V1, T2, V2, T3, T4, V3, V4, T5, V5, T6, V6, T7, V7, T8, V8, T9, V9, T10, V10);
-impl_parallel_vec_param!(T1, V1, T2, V2, T3, T4, V3, V4, T5, V5, T6, V6, T7, V7, T8, V8, T9, V9, T10, V10, T11, V11);
-impl_parallel_vec_param!(T1, V1, T2, V2, T3, T4, V3, V4, T5, V5, T6, V6, T7, V7, T8, V8, T9, V9, T10, V10, T11, V11, T12, V12);
+impl_parallel_vec_param!(
+    T1, V1, T2, V2, T3, T4, V3, V4, T5, V5, T6, V6, T7, V7, T8, V8, T9, V9, T10, V10
+);
+impl_parallel_vec_param!(
+    T1, V1, T2, V2, T3, T4, V3, V4, T5, V5, T6, V6, T7, V7, T8, V8, T9, V9, T10, V10, T11, V11
+);
+impl_parallel_vec_param!(
+    T1, V1, T2, V2, T3, T4, V3, V4, T5, V5, T6, V6, T7, V7, T8, V8, T9, V9, T10, V10, T11, V11,
+    T12, V12
+);
+
+#[cfg(test)]
+mod tests {
+    use super::ParallelVec;
+    use testdrop::TestDrop;
+
+    fn assert_all_dropped(td: &TestDrop) {
+        assert_eq!(td.num_dropped_items(), td.num_tracked_items());
+    }
+
+    #[test]
+    fn layouts_do_not_overlap() {
+        // Trying with both (small, large) and (large, small) to ensure nothing bleeds into anything else.
+        // This verifies we correctly chunk the slices from the larger allocations.
+        let mut vec_ab = ParallelVec::new();
+        let mut vec_ba = ParallelVec::new();
+
+        fn ab(v: usize) -> (u8, f64) {
+            (v as u8, 200.0 + ((v as f64) / 200.0))
+        }
+
+        fn ba(v: usize) -> (f64, u8) {
+            (15.0 + ((v as f64) / 16.0), (20000 - v) as u8)
+        }
+
+        // Combined with the tests inside, also verifies that we are copying the data on grow correctly.
+        for i in 0..20000 {
+            vec_ab.push(ab(i));
+            let (a, b) = vec_ab.as_slices();
+            assert_eq!(i + 1, a.len());
+            assert_eq!(i + 1, b.len());
+            assert_eq!(ab(0).0, a[0]);
+            assert_eq!(ab(0).1, b[0]);
+            assert_eq!(ab(i).0, a[i]);
+            assert_eq!(ab(i).1, b[i]);
+
+            vec_ba.push(ba(i));
+            let (b, a) = vec_ba.as_slices();
+            assert_eq!(i + 1, a.len());
+            assert_eq!(i + 1, b.len());
+            assert_eq!(ba(0).0, b[0]);
+            assert_eq!(ba(0).1, a[0]);
+            assert_eq!(ba(i).0, b[i]);
+            assert_eq!(ba(i).1, a[i]);
+        }
+    }
+
+    // #[test]
+    // fn sort() {
+    //     let mut vec = ParallelVec::new();
+
+    //     vec.push((3, 'a', 4.0));
+    //     vec.push((1, 'b', 5.0));
+    //     vec.push((2, 'c', 6.0));
+
+    //     vec.sort_unstable_by(|(a1, _, _), (a2, _, _)| a1.cmp(a2));
+
+    //     assert_eq!(vec.index(0), (&1, &('b'), &5.0));
+    //     assert_eq!(vec.index(1), (&2, &('c'), &6.0));
+    //     assert_eq!(vec.index(2), (&3, &('a'), &4.0));
+    // }
+
+    // #[test]
+    // fn drops() {
+    //     let td = TestDrop::new();
+    //     let (id, item) = td.new_item();
+    //     {
+    //         let mut soa = ParallelVec::new();
+    //         soa.push((1.0, item));
+    //         // Did not drop when moved into the soa
+    //         td.assert_no_drop(id);
+    //         // Did not drop through resizing the soa.
+    //         for _ in 0..50 {
+    //             soa.push((2.0, td.new_item().1));
+    //         }
+    //         td.assert_no_drop(id);
+    //     }
+    //     // Dropped with the soa
+    //     td.assert_drop(id);
+    //     assert_all_dropped(&td);
+    // }
+
+    #[test]
+    fn clones() {
+        let mut src = ParallelVec::new();
+        src.push((1.0, 2.0));
+        src.push((3.0, 4.0));
+
+        let dst = src.clone();
+        assert_eq!(dst.len(), 2);
+        assert_eq!(dst.index(0), (&1.0, &2.0));
+        assert_eq!(dst.index(1), (&3.0, &4.0));
+    }
+
+    #[test]
+    fn insert() {
+        let mut src = ParallelVec::new();
+        src.insert(0, (1, 2));
+        src.insert(0, (3, 4));
+        src.insert(1, (4, 5));
+        assert_eq!(src.index(0), (&3, &4));
+        assert_eq!(src.index(1), (&4, &5));
+        assert_eq!(src.index(2), (&1, &2));
+    }
+
+    #[test]
+    fn remove() {
+        let mut src = ParallelVec::new();
+        src.push((1, 2));
+        src.push((3, 4));
+        assert_eq!(src.remove(0), Some((1, 2)));
+        assert_eq!(src.remove(0), Some((3, 4)));
+        assert_eq!(src.len(), 0);
+    }
+}
