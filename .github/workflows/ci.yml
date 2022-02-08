@@ -49,7 +49,7 @@ jobs:
         if: matrix.std == 'no-std'
         with:
           command: build
-          args: --no-default-flags
+          args: --no-default-features
         env:
           CARGO_INCREMENTAL: 0
           RUSTFLAGS: "-C debuginfo=0"
