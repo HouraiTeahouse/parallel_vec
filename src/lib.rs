@@ -4,16 +4,17 @@
 #![no_std]
 
 //! [`ParallelVec`] is a generic collection of contiguously stored heterogenous values with
-//! an API similar to that of a `Vec<(T1, T2, ...)>` but which store the data laid out as a
-//! separate slice per field. The advantage of this layout is that when iterating over the
-//! data only a subset need be loaded from RAM.
+//!  an API similar to that of a `Vec<(T1, T2, ...)>` but stores the data laid out as a 
+//! separate slice per field, using a [structures of arrays](https://en.wikipedia.org/wiki/AoS_and_SoA#Structure_of_arrays)
+//! layout. The advantage of this layout is that cache utilization may be signifgantly improved 
+//! when iterating over the data.
 //!
 //! This approach is common to game engines, and Entity-Component-Systems in particular but is
 //! applicable anywhere that cache coherency and memory bandwidth are important for performance.
 //!
 //! Unlike a struct of `Vec`s, only one length and capacity field is stored, and only one contiguous
 //! allocation is made for the entire data structs. Upon reallocation, a struct of `Vec` may apply
-//!  additional allocation strain. `ParallelVec` only allocates once per resize.
+//! additional allocation pressure. `ParallelVec` only allocates once per resize.
 //!
 //! ## Example
 //! ```rust
@@ -78,7 +79,7 @@ use iter::*;
 /// allocation pressure. It also only stores one length and capacity instead
 /// of duplicating the values across multiple `Vec` fields.
 ///
-/// [structures of arrays]:
+/// [structures of arrays]: https://en.wikipedia.org/wiki/AoS_and_SoA#Structure_of_arrays
 pub struct ParallelVec<Param: ParallelVecParam> {
     len: usize,
     capacity: usize,
