@@ -43,7 +43,7 @@ jobs:
         if: runner.os == 'linux'
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features
+          args: --all-features -- -D warnings
           
       - uses: actions-rs/cargo@v1
         if: matrix.std == 'no-std'
