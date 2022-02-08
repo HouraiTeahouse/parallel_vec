@@ -4,7 +4,7 @@
 [![Documentation](https://docs.rs/parallel-vec/badge.svg)](https://docs.rs/parallel-vec)
 ![License](https://img.shields.io/crates/l/parallel-vec.svg)
 
-`ParallelVec` is a generic collection of contiguously stored heterogenous values with
+`ParallelVec` is a generic cotjllection of contiguously stored heterogenous values with
 an API similar to that of a `Vec<(T1, T2, ...)>` but which store the data laid out as a 
 separate slice per field. The advantage of this layout is that when iterating over the 
 data only a subset need be loaded from RAM.
@@ -43,3 +43,8 @@ entities.swap_remove(0);
 # Nightly
 This crate requires use of GATs and therefore requires the following nightly features:
  * `generic_associated_types`
+
+# `no_std` Support 
+By default, this crate requires the standard library. Disabling the default features 
+enables this crate to compile in `#![no_std]` environments. There must be a set global
+allocator and heap support for this crate to work.

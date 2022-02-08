@@ -1,5 +1,5 @@
 use crate::{ParallelVec, ParallelVecParam};
-use std::marker::PhantomData;
+use core::marker::PhantomData;
 
 /// An iterator over immutable references to values in a [`ParallelVec`].
 ///

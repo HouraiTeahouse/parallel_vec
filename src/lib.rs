@@ -1,15 +1,16 @@
 #![allow(non_snake_case)]
 #![deny(missing_docs)]
 #![feature(generic_associated_types)]
+#![no_std]
 
 //! [`ParallelVec`] is a generic collection of contiguously stored heterogenous values with
-//! an API similar to that of a `Vec<(T1, T2, ...)>` but which store the data laid out as a 
-//! separate slice per field. The advantage of this layout is that when iterating over the 
+//! an API similar to that of a `Vec<(T1, T2, ...)>` but which store the data laid out as a
+//! separate slice per field. The advantage of this layout is that when iterating over the
 //! data only a subset need be loaded from RAM.
 //!
 //! This approach is common to game engines, and Entity-Component-Systems in particular but is
 //! applicable anywhere that cache coherency and memory bandwidth are important for performance.
-//! 
+//!
 //! Unlike a struct of `Vec`s, only one length and capacity field is stored, and only one contiguous
 //! allocation is made for the entire data structs. Upon reallocation, a struct of `Vec` may apply
 //!  additional allocation strain. `ParallelVec` only allocates once per resize.
@@ -44,7 +45,18 @@
 //!
 //! # Nightly
 //! This crate requires use of GATs and therefore requires the following nightly features:
-//! * generic_associated_types
+//! * `generic_associated_types`
+//!
+//!  # `no_std` Support
+//! By default, this crate requires the standard library. Disabling the default features
+//! enables this crate to compile in `#![no_std]` environments. There must be a set global
+//! allocator and heap support for this crate to work.
+
+extern crate alloc;
+
+#[cfg(any(test, feature = "std"))]
+#[macro_use]
+extern crate std;
 
 /// A collection of iterators types for [`ParallelVec`].
 pub mod iter;
@@ -53,8 +65,8 @@ pub mod param;
 
 pub use param::ParallelVecParam;
 
+use core::marker::PhantomData;
 use iter::*;
-use std::marker::PhantomData;
 
 /// A contiguously growable heterogenous array type.
 ///
@@ -346,7 +358,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
             if min_capacity > self.capacity {
                 return;
             }
-            let capacity = std::cmp::max(self.len, min_capacity);
+            let capacity = core::cmp::max(self.len, min_capacity);
             let src = Param::as_ptr(self.storage);
             let dst = Param::alloc(capacity);
             Param::copy_to_nonoverlapping(src, Param::as_ptr(dst), self.len);

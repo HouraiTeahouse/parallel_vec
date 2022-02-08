@@ -1,6 +1,9 @@
+#[cfg(feature = "std")]
 use super::{ParallelVec, ParallelVecConversionError};
-use std::alloc::Layout;
-use std::ptr::NonNull;
+use alloc::alloc::{alloc, dealloc, Layout};
+use core::ptr::NonNull;
+#[cfg(feature = "std")]
+use std::vec::Vec;
 
 /// This trait contains the basic operations for creating variadic
 /// parallel vector implementations.
@@ -25,6 +28,7 @@ pub unsafe trait ParallelVecParam: Sized + private::Sealed {
     type Ref<'a>;
     /// A set of mutable references of the parameter.
     type RefMut<'a>;
+    #[cfg(feature = "std")]
     /// A set of [`Vec<T>`]s of the parameter.
     type Vecs;
     /// A set of mutable slice references of the parameter.
@@ -65,12 +69,14 @@ pub unsafe trait ParallelVecParam: Sized + private::Sealed {
     ///
     /// Returns `None` if not all of the `Vec`s share the same
     /// length.
+    #[cfg(feature = "std")]
     fn get_vec_len(vecs: &Self::Vecs) -> Option<usize>;
 
     /// Gets the underlying pointers for the associated `Vec`s.
     ///
     /// # Safety
     /// The provided `Vec`s must be correctly allocated.
+    #[cfg(feature = "std")]
     unsafe fn get_vec_ptrs(vecs: &mut Self::Vecs) -> Self::Ptr;
 
     /// Adds `offset` to all of the pointers in `base`.
@@ -205,11 +211,12 @@ macro_rules! impl_parallel_vec_param {
             type RefMut<'a> = (&'a mut $t1, $(&'a mut $ts,)*);
             type Slices<'a> = (&'a [$t1] $(, &'a [$ts])*);
             type SlicesMut<'a> = (&'a mut [$t1] $(, &'a mut [$ts])*);
+            #[cfg(feature="std")]
             type Vecs = (Vec<$t1> $(, Vec<$ts>)*);
             type Ptr = (*mut $t1 $(, *mut $ts)*);
             type Offsets = (usize $(, skip_first!($ts, usize))*);
-            type Iters<'a> = (std::slice::Iter<'a, $t1> $(, std::slice::Iter<'a, $ts>)*);
-            type ItersMut<'a>= (std::slice::IterMut<'a, $t1> $(, std::slice::IterMut<'a, $ts>)*);
+            type Iters<'a> = (core::slice::Iter<'a, $t1> $(, core::slice::Iter<'a, $ts>)*);
+            type ItersMut<'a>= (core::slice::IterMut<'a, $t1> $(, core::slice::IterMut<'a, $ts>)*);
 
             #[inline(always)]
             fn dangling() -> Self::Storage {
@@ -224,7 +231,7 @@ macro_rules! impl_parallel_vec_param {
 
             unsafe fn alloc(capacity: usize) -> Self::Storage {
                 let layout = Self::layout_for_capacity(capacity);
-                let bytes = std::alloc::alloc(layout.layout);
+                let bytes = alloc(layout.layout);
                 let (_ $(, $ts)*) = layout.offsets;
                 (
                     NonNull::new_unchecked(bytes.cast::<$t1>())
@@ -235,7 +242,7 @@ macro_rules! impl_parallel_vec_param {
             unsafe fn dealloc(storage: &mut Self::Storage, capacity: usize) {
                 if capacity > 0 {
                     let layout = Self::layout_for_capacity(capacity);
-                    std::alloc::dealloc(storage.0.as_ptr().cast::<u8>(), layout.layout);
+                    dealloc(storage.0.as_ptr().cast::<u8>(), layout.layout);
                 }
             }
 
@@ -276,9 +283,9 @@ macro_rules! impl_parallel_vec_param {
             unsafe fn as_slices<'a>(ptr: Self::Ptr, len: usize) -> Self::Slices<'a> {
                 let ($t1, $($ts),*) = ptr;
                 (
-                    std::slice::from_raw_parts($t1, len)
+                    core::slice::from_raw_parts($t1, len)
                     $(
-                        , std::slice::from_raw_parts($ts, len)
+                        , core::slice::from_raw_parts($ts, len)
                     )*
                 )
             }
@@ -287,9 +294,9 @@ macro_rules! impl_parallel_vec_param {
             unsafe fn as_slices_mut<'a>(ptr: Self::Ptr, len: usize) -> Self::SlicesMut<'a> {
                 let ($t1, $($ts),*) = ptr;
                 (
-                    std::slice::from_raw_parts_mut($t1, len)
+                    core::slice::from_raw_parts_mut($t1, len)
                     $(
-                        , std::slice::from_raw_parts_mut($ts, len)
+                        , core::slice::from_raw_parts_mut($ts, len)
                     )*
                 )
             }
@@ -343,17 +350,18 @@ macro_rules! impl_parallel_vec_param {
             unsafe fn swap(a: Self::Ptr, b: Self::Ptr) {
                 let ($v1, $($vs),*) = a;
                 let ($t1, $($ts),*) = b;
-                std::ptr::swap($t1, $v1);
-                $(std::ptr::swap($ts, $vs);)*
+                core::ptr::swap($t1, $v1);
+                $(core::ptr::swap($ts, $vs);)*
             }
 
             #[inline(always)]
             unsafe fn drop(ptr: Self::Ptr) {
                 let ($t1, $($ts),*) = Self::read(ptr);
-                std::mem::drop($t1);
-                $(std::mem::drop($ts);)*
+                core::mem::drop($t1);
+                $(core::mem::drop($ts);)*
             }
 
+            #[cfg(feature="std")]
             fn get_vec_len(vecs: &Self::Vecs) -> Option<usize> {
                 let ($t1, $($ts),*) = vecs;
                 let len = $t1.len();
@@ -365,12 +373,14 @@ macro_rules! impl_parallel_vec_param {
                 Some(len)
             }
 
+            #[cfg(feature="std")]
             unsafe fn get_vec_ptrs(vecs: &mut Self::Vecs) -> Self::Ptr {
                 let ($t1, $($ts),*) = vecs;
                 ($t1.as_mut_ptr() $(, $ts.as_mut_ptr())*)
             }
         }
 
+        #[cfg(feature="std")]
         impl<$t1: 'static $(, $ts: 'static)*> TryFrom<(Vec<$t1> $(, Vec<$ts>)*)> for ParallelVec<($t1 $(, $ts)*)> {
             type Error = ParallelVecConversionError;
             fn try_from(mut vecs: (Vec<$t1> $(, Vec<$ts>)*)) -> Result<Self, Self::Error> {
@@ -382,7 +392,7 @@ macro_rules! impl_parallel_vec_param {
                         let src = <($t1 $(, $ts)*) as ParallelVecParam>::get_vec_ptrs(&mut vecs);
                         let dst = <($t1 $(, $ts)*) as ParallelVecParam>::as_ptr(parallel_vec.storage);
                         <($t1 $(, $ts)*) as ParallelVecParam>::copy_to_nonoverlapping(src, dst, len);
-                        std::mem::forget(vecs);
+                        core::mem::forget(vecs);
                     }
                     Ok(parallel_vec)
                 } else {
