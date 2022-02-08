@@ -318,8 +318,8 @@ macro_rules! impl_parallel_vec_param {
             #[inline(always)]
             fn reverse<'a>(slices: Self::SlicesMut<'a>) {
                 let ($t1, $($ts),*) = slices;
-		$t1.reverse();
-		$($ts.reverse();)*
+                $t1.reverse();
+                $($ts.reverse();)*
             }
 
             #[inline(always)]
