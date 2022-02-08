@@ -4,9 +4,9 @@
 #![no_std]
 
 //! [`ParallelVec`] is a generic collection of contiguously stored heterogenous values with
-//!  an API similar to that of a `Vec<(T1, T2, ...)>` but stores the data laid out as a 
+//!  an API similar to that of a `Vec<(T1, T2, ...)>` but stores the data laid out as a
 //! separate slice per field, using a [structures of arrays](https://en.wikipedia.org/wiki/AoS_and_SoA#Structure_of_arrays)
-//! layout. The advantage of this layout is that cache utilization may be signifgantly improved 
+//! layout. The advantage of this layout is that cache utilization may be signifgantly improved
 //! when iterating over the data.
 //!
 //! This approach is common to game engines, and Entity-Component-Systems in particular but is
