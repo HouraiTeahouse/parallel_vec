@@ -623,6 +623,18 @@ impl<Param: ParallelVecParam> Drop for ParallelVec<Param> {
     }
 }
 
+impl<Param: ParallelVecParam> FromIterator<Param> for ParallelVec<Param> {
+    fn from_iter<T>(iter: T) -> Self where T: IntoIterator<Item=Param> {
+        let iter = iter.into_iter();
+        let (min, _) = iter.size_hint();
+        let mut parallel_vec = Self::with_capacity(min);
+        for item in iter {
+            parallel_vec.push(item);
+        }
+        parallel_vec
+    }
+}
+
 impl<Param: ParallelVecParam> IntoIterator for ParallelVec<Param> {
     type Item = Param;
     type IntoIter = IntoIter<Param>;
