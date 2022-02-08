@@ -37,7 +37,7 @@
 //! // Update entities. This loop only loads position and velocity data, while skipping over
 //! // the ColdData which is not necessary for the physics simulation.
 //! for (position, velocity, _) in entities.iter_mut() {
-//! 	*position = *position + *velocity;
+//!     *position = *position + *velocity;
 //! }
 //!
 //! // Remove an entity
@@ -146,7 +146,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     ///
     /// [`None`]: Option::None
     #[inline]
-    pub fn get<'a>(&'a self, index: usize) -> Option<Param::Ref<'a>> {
+    pub fn get(&self, index: usize) -> Option<Param::Ref<'_>> {
         if self.len <= index {
             None
         } else {
@@ -159,7 +159,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     ///
     /// [`None`]: Option::None
     #[inline]
-    pub fn get_mut<'a>(&'a mut self, index: usize) -> Option<Param::RefMut<'a>> {
+    pub fn get_mut(&mut self, index: usize) -> Option<Param::RefMut<'_>> {
         if self.len <= index {
             None
         } else {
@@ -169,19 +169,19 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
 
     /// Returns the first element of the `ParallelVec`, or `None` if it is empty.
     #[inline(always)]
-    pub fn first<'a>(&'a self) -> Option<Param::Ref<'a>> {
+    pub fn first(&self) -> Option<Param::Ref<'_>> {
         self.get(0)
     }
 
     /// Returns the mutable pointer first element of the `ParallelVec`, or `None` if it is empty.
     #[inline(always)]
-    pub fn first_mut<'a>(&'a mut self) -> Option<Param::RefMut<'a>> {
+    pub fn first_mut(&mut self) -> Option<Param::RefMut<'_>> {
         self.get_mut(0)
     }
 
     /// Returns the last element of the `ParallelVec`, or `None` if it is empty.
     #[inline]
-    pub fn last<'a>(&'a self) -> Option<Param::Ref<'a>> {
+    pub fn last(&self) -> Option<Param::Ref<'_>> {
         if self.len == 0 {
             None
         } else {
@@ -191,7 +191,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
 
     /// Returns the mutable pointer last element of the `ParallelVec`, or `None` if it is empty.
     #[inline]
-    pub fn last_mut<'a>(&'a mut self) -> Option<Param::RefMut<'a>> {
+    pub fn last_mut(&mut self) -> Option<Param::RefMut<'_>> {
         if self.len == 0 {
             None
         } else {
@@ -217,7 +217,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     /// # Panics
     /// This function will panic if `index` is >= `self.len`.
     #[inline]
-    pub fn index_mut<'a>(&'a mut self, index: usize) -> Param::RefMut<'a> {
+    pub fn index_mut(&mut self, index: usize) -> Param::RefMut<'_> {
         if self.len <= index {
             panic!("ParallelVec: Index out of bounds: {}", index);
         } else {
@@ -234,7 +234,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     ///
     /// [`get`]: Self::get
     #[inline]
-    pub unsafe fn get_unchecked<'a>(&'a self, index: usize) -> Param::Ref<'a> {
+    pub unsafe fn get_unchecked(&self, index: usize) -> Param::Ref<'_> {
         let ptr = Param::as_ptr(self.storage);
         Param::as_ref(Param::add(ptr, index))
     }
@@ -248,7 +248,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     ///
     /// [`get_mut`]: Self::get_mut
     #[inline]
-    pub unsafe fn get_unchecked_mut<'a>(&'a mut self, index: usize) -> Param::RefMut<'a> {
+    pub unsafe fn get_unchecked_mut(&mut self, index: usize) -> Param::RefMut<'_> {
         let ptr = self.as_mut_ptrs();
         Param::as_mut(Param::add(ptr, index))
     }
@@ -548,7 +548,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     }
 
     /// Returns an iterator over the [`ParallelVec`].
-    pub fn iters<'a>(&'a self) -> Param::Iters<'a> {
+    pub fn iters(&self) -> Param::Iters<'_> {
         unsafe {
             let ptr = Param::as_ptr(self.storage);
             let slices = Param::as_slices(ptr, self.len);
@@ -557,7 +557,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     }
 
     /// Gets individual iterators.
-    pub fn iters_mut<'a>(&'a mut self) -> Param::ItersMut<'a> {
+    pub fn iters_mut(&mut self) -> Param::ItersMut<'_> {
         unsafe {
             let ptr = Param::as_ptr(self.storage);
             let slices = Param::as_slices_mut(ptr, self.len);
@@ -577,7 +577,7 @@ impl<Param: ParallelVecParam + Copy> ParallelVec<Param> {
             for _ in 0..n {
                 for idx in 0..self.len {
                     let value = Param::read(Param::add(base, idx));
-                    Param::write(dst, value.clone());
+                    Param::write(dst, value);
                     dst = Param::add(dst, 1);
                 }
             }

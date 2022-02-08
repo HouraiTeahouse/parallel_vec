@@ -120,13 +120,15 @@ pub unsafe trait ParallelVecParam: Sized + private::Sealed {
     unsafe fn as_slices_mut<'a>(ptr: Self::Ptr, len: usize) -> Self::SlicesMut<'a>;
 
     /// Creates a set of iterators from slices.
+    #[allow(clippy::needless_lifetimes)]
     fn iters<'a>(slices: Self::Slices<'a>) -> Self::Iters<'a>;
 
     /// Creates a set of iterators of mutable references from slices.
+    #[allow(clippy::needless_lifetimes)]
     fn iters_mut<'a>(slices: Self::SlicesMut<'a>) -> Self::ItersMut<'a>;
 
     /// Reverses the order of elements in the slice, in place.
-    fn reverse<'a>(ptr: Self::SlicesMut<'a>);
+    fn reverse(ptr: Self::SlicesMut<'_>);
 
     /// Converts `ptr` into a set of immutable references.
     ///
