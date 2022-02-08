@@ -465,12 +465,8 @@ impl<'a, Param: ParallelVecParam> Iterator for IterMut<'a, Param> {
 /// This trait contains the basic operations for creating variadic
 /// parallel vector implementations.
 ///
-/// This trait should generally not be implemented by users. Please use the
-/// tuple implementations where possible.
-///
-/// # Safety
-/// None of the associated functions can panic.
-pub unsafe trait ParallelVecParam: Sized {
+/// This trait is sealed and cannot be implemented outside of `parallel_vec`.
+pub unsafe trait ParallelVecParam: Sized + private::Sealed {
     type Storage: Copy;
     type Ptr: Copy;
     type Offsets;
@@ -602,6 +598,28 @@ pub struct MemoryLayout<Param: ParallelVecParam> {
 
 pub enum ParallelVecConversionError {
     UnevenLengths,
+}
+
+mod private {
+    pub trait Sealed {}
+
+    macro_rules! impl_seal {
+        ($($ts:ident),*) => {
+            impl<$($ts,)*> Sealed for ($($ts,)*) {}
+        }
+    }
+
+    impl_seal!(T1, T2);
+    impl_seal!(T1, T2, T3);
+    impl_seal!(T1, T2, T3, T4);
+    impl_seal!(T1, T2, T3, T4, T5);
+    impl_seal!(T1, T2, T3, T4, T5, T6);
+    impl_seal!(T1, T2, T3, T4, T5, T6, T7);
+    impl_seal!(T1, T2, T3, T4, T5, T6, T7, T8);
+    impl_seal!(T1, T2, T3, T4, T5, T6, T7, T8, T9);
+    impl_seal!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
+    impl_seal!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11);
+    impl_seal!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12);
 }
 
 macro_rules! skip_first {
@@ -825,11 +843,11 @@ mod tests {
         }
 
         fn ba(v: usize) -> (f64, u8) {
-            (15.0 + ((v as f64) / 16.0), (20000 - v) as u8)
+            (15.0 + ((v as f64) / 16.0), (200 - v) as u8)
         }
 
         // Combined with the tests inside, also verifies that we are copying the data on grow correctly.
-        for i in 0..20000 {
+        for i in 0..100 {
             vec_ab.push(ab(i));
             let (a, b) = vec_ab.as_slices();
             assert_eq!(i + 1, a.len());
