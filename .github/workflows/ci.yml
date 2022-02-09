@@ -57,7 +57,8 @@ jobs:
       - uses: actions-rs/cargo@v1
         if: matrix.std == 'std'
         with:
-          command: miri test
+          command: miri
+          args: test
         env:
           CARGO_INCREMENTAL: 0
           RUSTFLAGS: "-C debuginfo=0"
