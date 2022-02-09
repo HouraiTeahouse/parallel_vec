@@ -352,8 +352,13 @@ impl<Param: ParallelParam> DerefMut for ParallelVec<Param> {
 #[cfg(test)]
 mod tests {
     use super::ParallelVec;
-
     use std::rc::Rc;
+
+    #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+    struct ZST;
+
+    #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+    struct ZST2;
 
     #[test]
     fn layouts_do_not_overlap() {
@@ -446,6 +451,20 @@ mod tests {
         assert_eq!(dst.len(), 2);
         assert_eq!(dst.index(0), (&1.0, &2.0));
         assert_eq!(dst.index(1), (&3.0, &4.0));
+    }
+
+    #[test]
+    fn test_works_with_zsts() {
+        let mut src = ParallelVec::new();
+        src.push((1, ZST, 20u64, ZST2));
+        src.push((1, ZST, 21u64, ZST2));
+        src.push((1, ZST, 22u64, ZST2));
+        src.push((1, ZST, 23u64, ZST2));
+        assert_eq!(src.index(0), (&1, &ZST, &20u64, &ZST2));
+        assert_eq!(src.index(1), (&1, &ZST, &21u64, &ZST2));
+        assert_eq!(src.index(2), (&1, &ZST, &22u64, &ZST2));
+        assert_eq!(src.index(3), (&1, &ZST, &23u64, &ZST2));
+        assert_eq!(src.len(), 4);
     }
 
     #[test]
