@@ -1,5 +1,5 @@
+use crate::iter::{IntoIter, Iter, IterMut};
 use crate::ParallelVecParam;
-use crate::iter::{Iter, IterMut, IntoIter};
 use core::marker::PhantomData;
 
 /// A contiguously growable heterogenous array type.
@@ -13,10 +13,11 @@ use core::marker::PhantomData;
 /// of duplicating the values across multiple `Vec` fields.
 ///
 /// [structures of arrays]: https://en.wikipedia.org/wiki/AoS_and_SoA#Structure_of_arrays
+#[repr(C)]
 pub struct ParallelVec<Param: ParallelVecParam> {
     pub(crate) len: usize,
-    pub(crate) capacity: usize,
     pub(crate) storage: Param::Storage,
+    pub(crate) capacity: usize,
 }
 
 impl<Param: ParallelVecParam> ParallelVec<Param> {
@@ -168,8 +169,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     /// [`get`]: Self::get
     #[inline]
     pub unsafe fn get_unchecked(&self, index: usize) -> Param::Ref<'_> {
-        let ptr = Param::as_ptr(self.storage);
-        Param::as_ref(Param::add(ptr, index))
+        Param::as_ref(Param::ptr_at(self.storage, index))
     }
 
     /// Returns mutable references to elements, without doing bounds checking.
@@ -182,8 +182,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     /// [`get_mut`]: Self::get_mut
     #[inline]
     pub unsafe fn get_unchecked_mut(&mut self, index: usize) -> Param::RefMut<'_> {
-        let ptr = self.as_mut_ptrs();
-        Param::as_mut(Param::add(ptr, index))
+        Param::as_mut(Param::ptr_at(self.storage, index))
     }
 
     /// Returns a raw pointer to the slice’s buffer.
@@ -340,8 +339,8 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     pub fn append(&mut self, other: &mut ParallelVec<Param>) {
         self.reserve(other.len);
         unsafe {
-            let src = other.as_mut_ptrs();
-            let dst = Param::add(self.as_mut_ptrs(), self.len);
+            let src = Param::as_ptr(other.storage);
+            let dst = Param::ptr_at(self.storage, self.len);
             Param::copy_to_nonoverlapping(src, dst, other.len);
             // No need to drop from the other vec, data has been moved to
             // the current one. Just set the length here.
@@ -353,7 +352,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     pub fn push(&mut self, value: Param) {
         unsafe {
             self.reserve(1);
-            let ptr = Param::add(self.as_mut_ptrs(), self.len);
+            let ptr = Param::ptr_at(self.storage, self.len);
             Param::write(ptr, value);
             self.len += 1;
         }
@@ -368,7 +367,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
             None
         } else {
             unsafe {
-                let ptr = Param::add(self.as_mut_ptrs(), self.len);
+                let ptr = Param::ptr_at(self.storage, self.len);
                 let value = Param::read(ptr);
                 self.len -= 1;
                 Some(value)
@@ -390,12 +389,12 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
         }
 
         unsafe {
-            let target_ptr = Param::add(self.as_mut_ptrs(), index);
+            let target_ptr = Param::ptr_at(self.storage, index);
             let value = Param::read(target_ptr);
             self.len -= 1;
 
             if self.len != index {
-                let end = Param::add(self.as_mut_ptrs(), self.len);
+                let end = Param::ptr_at(self.storage, self.len);
                 Param::copy_to_nonoverlapping(end, target_ptr, 1);
             }
 
@@ -416,7 +415,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
         unsafe {
             // TODO: (Performance) In the case where we do grow, this can result in redundant copying.
             self.reserve(1);
-            let ptr = Param::add(self.as_mut_ptrs(), index);
+            let ptr = Param::ptr_at(self.storage, index);
             Param::copy_to(ptr, Param::add(ptr, 1), self.len - index);
             Param::write(ptr, value);
             self.len += 1;
@@ -432,7 +431,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
             return None;
         }
         unsafe {
-            let ptr = Param::add(self.as_mut_ptrs(), index);
+            let ptr = Param::ptr_at(self.storage, index);
             let value = Param::read(ptr);
             Param::copy_to(Param::add(ptr, 1), ptr, self.len - index - 1);
             self.len -= 1;
@@ -557,7 +556,10 @@ impl<Param: ParallelVecParam> Drop for ParallelVec<Param> {
 }
 
 impl<Param: ParallelVecParam> FromIterator<Param> for ParallelVec<Param> {
-    fn from_iter<T>(iter: T) -> Self where T: IntoIterator<Item=Param> {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = Param>,
+    {
         let iter = iter.into_iter();
         let (min, _) = iter.size_hint();
         let mut parallel_vec = Self::with_capacity(min);

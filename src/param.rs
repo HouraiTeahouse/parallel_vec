@@ -62,6 +62,17 @@ pub unsafe trait ParallelVecParam: Sized + private::Sealed {
     /// [`alloc`]: Self::alloc
     unsafe fn dealloc(storage: &mut Self::Storage, capacity: usize);
 
+    /// Gets the pointer at a given index.
+    ///
+    /// # Safety
+    /// `storage` must be a set of valid pointers, and `idx` must be in
+    /// bounds for the associated allocation.
+    ///
+    /// [`alloc`]: Self::alloc
+    unsafe fn ptr_at(storage: Self::Storage, idx: usize) -> Self::Ptr {
+        Self::add(Self::as_ptr(storage), idx)
+    }
+
     /// Creates a layout for a [`ParallelVec`] for a given `capacity`
     fn layout_for_capacity(capacity: usize) -> MemoryLayout<Self>;
 
@@ -135,6 +146,12 @@ pub unsafe trait ParallelVecParam: Sized + private::Sealed {
     /// # Safety
     /// `ptr` must be a valid, non-null pointer.
     unsafe fn as_ref<'a>(ptr: Self::Ptr) -> Self::Ref<'a>;
+
+    /// Converts `ptr` into the storage type.
+    ///
+    /// # Safety
+    /// `ptr` must be a valid, non-null pointer.
+    unsafe fn as_storage(ptr: Self::Ptr) -> Self::Storage;
 
     /// Converts `ptr` into a set of mutable references.
     ///
@@ -320,6 +337,15 @@ macro_rules! impl_parallel_vec_param {
                 let ($t1, $($ts),*) = slices;
                 $t1.reverse();
                 $($ts.reverse();)*
+            }
+
+            #[inline(always)]
+            unsafe fn as_storage<'a>(ptr: Self::Ptr) -> Self::Storage {
+                let ($t1 $(, $ts)*) = ptr;
+                (
+                    NonNull::new_unchecked($t1)
+                    $(, NonNull::new_unchecked($ts))*
+                )
             }
 
             #[inline(always)]

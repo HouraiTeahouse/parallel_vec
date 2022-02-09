@@ -63,12 +63,12 @@ extern crate std;
 pub mod iter;
 /// Implementations for [`ParallelVecParam`].
 pub mod param;
-mod vec;
 mod slice;
+mod vec;
 
 pub use param::ParallelVecParam;
+pub use slice::{ParallelSlice, ParallelSliceMut};
 pub use vec::ParallelVec;
-pub use slice::ParallelSlice;
 
 /// Error when attempting to convert types to [`ParallelVec`].
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
