@@ -83,6 +83,11 @@ pub(crate) fn assert_in_bounds(idx: usize, len: usize) {
 }
 
 #[inline(always)]
+pub(crate) fn assert_in_bounds_inclusive(idx: usize, len: usize) {
+    assert!(idx <= len, "Index out of bounds: {} (len: {})", idx, len);
+}
+
+#[inline(always)]
 pub(crate) fn out_of_bounds(idx: usize, len: usize) {
     panic!("Index out of bounds: {} (len: {})", idx, len);
 }

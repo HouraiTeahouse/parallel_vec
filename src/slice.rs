@@ -1,6 +1,6 @@
-use crate::assert_in_bounds;
 use crate::iter::{Iter, IterMut};
 use crate::ParallelParam;
+use crate::{assert_in_bounds, assert_in_bounds_inclusive};
 use core::marker::PhantomData;
 use core::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo};
 
@@ -500,7 +500,7 @@ pub trait ParallelSliceIndexMut<T> {
 impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for usize {
     type Output = Param::Ref<'s>;
     fn get(self, slice: &ParallelSlice<'s, Param>) -> Option<Self::Output> {
-        if self > slice.len {
+        if self >= slice.len {
             return None;
         }
 
@@ -548,7 +548,7 @@ impl<'s, Param: ParallelParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>
 impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for Range<usize> {
     type Output = ParallelSlice<'s, Param>;
     fn get(self, slice: &ParallelSlice<'s, Param>) -> Option<Self::Output> {
-        if self.start >= slice.len || self.end >= slice.len {
+        if self.start >= slice.len || self.end > slice.len {
             return None;
         }
 
@@ -563,7 +563,7 @@ impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for 
 
     fn index(self, slice: &ParallelSlice<'s, Param>) -> Self::Output {
         assert_in_bounds(self.start, slice.len);
-        assert_in_bounds(self.end, slice.len);
+        assert_in_bounds_inclusive(self.end, slice.len);
         unsafe {
             let ptr = Param::ptr_at(slice.storage, self.start);
             ParallelSlice::from_raw_parts(Param::as_storage(ptr), self.end - self.start)
@@ -574,7 +574,7 @@ impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for 
 impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>> for Range<usize> {
     type Output = ParallelSlice<'s, Param>;
     fn get(self, slice: &ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
-        if self.start >= slice.len || self.end >= slice.len {
+        if self.start >= slice.len || self.end > slice.len {
             return None;
         }
 
@@ -589,7 +589,7 @@ impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>> f
 
     fn index(self, slice: &ParallelSliceMut<'s, Param>) -> Self::Output {
         assert_in_bounds(self.start, slice.len);
-        assert_in_bounds(self.end, slice.len);
+        assert_in_bounds_inclusive(self.end, slice.len);
         unsafe {
             let ptr = Param::ptr_at(slice.storage, self.start);
             ParallelSlice::from_raw_parts(Param::as_storage(ptr), self.end - self.start)
@@ -600,7 +600,7 @@ impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>> f
 impl<'s, Param: ParallelParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>> for Range<usize> {
     type Output = ParallelSliceMut<'s, Param>;
     fn get_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
-        if self.start >= slice.len || self.end >= slice.len {
+        if self.start >= slice.len || self.end > slice.len {
             return None;
         }
 
@@ -615,7 +615,7 @@ impl<'s, Param: ParallelParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>
 
     fn index_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Self::Output {
         assert_in_bounds(self.start, slice.len);
-        assert_in_bounds(self.end, slice.len);
+        assert_in_bounds_inclusive(self.end, slice.len);
         unsafe {
             let ptr = Param::ptr_at(slice.storage, self.start);
             ParallelSliceMut::from_raw_parts(Param::as_storage(ptr), self.end - self.start)

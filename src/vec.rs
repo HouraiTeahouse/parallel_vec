@@ -353,6 +353,7 @@ impl<Param: ParallelParam> DerefMut for ParallelVec<Param> {
 mod tests {
     use super::ParallelVec;
     use std::rc::Rc;
+    use std::vec::Vec;
 
     #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
     struct ZST;
@@ -552,6 +553,29 @@ mod tests {
         assert_eq!(iter.next(), None);
         // Shouldn't have removed any of them
         assert_eq!(src.len(), 4);
+    }
+
+    #[test]
+    fn test_iters() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12)]);
+        let (mut a, mut b) = src.iters();
+        assert_eq!(a.next(), Some(&1));
+        assert_eq!(a.next(), Some(&3));
+        assert_eq!(a.next(), Some(&5));
+        assert_eq!(a.next(), Some(&7));
+        assert_eq!(a.next(), Some(&9));
+        assert_eq!(a.next(), Some(&11));
+        assert_eq!(a.next(), None);
+        assert_eq!(a.next(), None);
+        assert_eq!(b.next(), Some(&2));
+        assert_eq!(b.next(), Some(&4));
+        assert_eq!(b.next(), Some(&6));
+        assert_eq!(b.next(), Some(&8));
+        assert_eq!(b.next(), Some(&10));
+        assert_eq!(b.next(), Some(&12));
+        assert_eq!(b.next(), None);
+        assert_eq!(b.next(), None);
     }
 
     #[test]
@@ -994,5 +1018,101 @@ mod tests {
         let mut src = ParallelVec::new();
         src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
         src.index_mut(1..9);
+    }
+
+    #[test]
+    fn test_into_iter() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        let vec: Vec<_> = src.into_iter().collect();
+        assert_eq!(vec, vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+    }
+
+    #[test]
+    fn test_slice_is_empty() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        let slice = src.index(1..1);
+        assert!(slice.is_empty());
+    }
+
+    #[test]
+    fn test_slice_first() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12)]);
+        let slice = src.index(1..4);
+        assert_eq!(slice.first(), Some((&3, &4)));
+    }
+
+    #[test]
+    fn test_slice_last() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12)]);
+        let slice = src.index(1..4);
+        assert_eq!(slice.last(), Some((&7, &8)));
+    }
+
+    #[test]
+    fn test_slice_get() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12)]);
+        let slice = src.index(1..4);
+        assert_eq!(slice.len(), 3);
+        assert_eq!(slice.get(0), Some((&3, &4)));
+        assert_eq!(slice.get(1), Some((&5, &6)));
+        assert_eq!(slice.get(2), Some((&7, &8)));
+        assert_eq!(slice.get(3), None);
+        assert_eq!(slice.get(4), None);
+    }
+
+    #[test]
+    fn test_slice_index() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12)]);
+        let slice = src.index(1..4);
+        assert_eq!(slice.len(), 3);
+        assert_eq!(slice.index(0), (&3, &4));
+        assert_eq!(slice.index(1), (&5, &6));
+        assert_eq!(slice.index(2), (&7, &8));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_slice_index_panics() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12)]);
+        let slice = src.index(1..4);
+        slice.index(3);
+    }
+
+    #[test]
+    fn test_slice_iter() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12)]);
+        let slice = src.index(1..4);
+        let mut iter = slice.iter();
+        assert_eq!(iter.next(), Some((&3, &4)));
+        assert_eq!(iter.next(), Some((&5, &6)));
+        assert_eq!(iter.next(), Some((&7, &8)));
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn test_slice_iters() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12)]);
+        let slice = src.index(1..4);
+        let (mut a, mut b) = slice.iters();
+        assert_eq!(a.next(), Some(&3));
+        assert_eq!(a.next(), Some(&5));
+        assert_eq!(a.next(), Some(&7));
+        assert_eq!(a.next(), None);
+        assert_eq!(a.next(), None);
+        assert_eq!(b.next(), Some(&4));
+        assert_eq!(b.next(), Some(&6));
+        assert_eq!(b.next(), Some(&8));
+        assert_eq!(b.next(), None);
+        assert_eq!(b.next(), None);
     }
 }
