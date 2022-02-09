@@ -142,15 +142,16 @@ impl<'a, Param: ParallelParam> ParallelSlice<'a, Param> {
     }
 }
 
-impl<'s, 'r, Param> Hash for ParallelSlice<'s, Param> 
-where 
+impl<'s, 'r, Param> Hash for ParallelSlice<'s, Param>
+where
     Param: ParallelParam + 's,
     Param::Ref<'s>: Hash,
-    'r: 's
+    'r: 's,
 {
-    fn hash<H>(&self, hasher: &mut H) 
+    fn hash<H>(&self, hasher: &mut H)
     where
-        H: Hasher {
+        H: Hasher,
+    {
         self.len.hash(hasher);
         for item in self.iter() {
             item.hash(hasher);
@@ -401,10 +402,7 @@ impl<'a, Param: ParallelParam> ParallelSliceMut<'a, Param> {
     #[inline]
     pub unsafe fn swap_unchecked(&mut self, a: usize, b: usize) {
         let base = Param::as_ptr(self.storage);
-        Param::swap(
-            Param::add(base, a),
-            Param::add(base, b)
-        );
+        Param::swap(Param::add(base, a), Param::add(base, b));
     }
 
     /// Reverses the order of elements in the [`ParallelSliceMut`], in place.
@@ -505,15 +503,16 @@ impl<'a, Param: ParallelParam> ParallelSliceMut<'a, Param> {
     }
 }
 
-impl<'s, 'r, Param> Hash for ParallelSliceMut<'s, Param> 
-where 
+impl<'s, 'r, Param> Hash for ParallelSliceMut<'s, Param>
+where
     Param: ParallelParam + 's,
     Param::Ref<'s>: Hash,
-    'r: 's
+    'r: 's,
 {
-    fn hash<H>(&self, hasher: &mut H) 
+    fn hash<H>(&self, hasher: &mut H)
     where
-        H: Hasher {
+        H: Hasher,
+    {
         self.len.hash(hasher);
         for item in self.iter() {
             item.hash(hasher);

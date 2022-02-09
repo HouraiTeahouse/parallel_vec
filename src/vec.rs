@@ -1,13 +1,9 @@
-use crate::{
-	assert_in_bounds, out_of_bounds,
-	ParallelParam, ParallelSliceMut,
-	iter::IntoIter,
-};
+use crate::{assert_in_bounds, iter::IntoIter, out_of_bounds, ParallelParam, ParallelSliceMut};
 use alloc::vec::Vec;
 use core::{
-	fmt::{Debug, Formatter},
-	ops::{Deref, DerefMut},
-	hash::{Hash, Hasher},
+    fmt::{Debug, Formatter},
+    hash::{Hash, Hasher},
+    ops::{Deref, DerefMut},
 };
 
 /// A contiguously growable heterogenous array type.
@@ -323,10 +319,10 @@ where
     Param::Ref<'a>: Hash,
 {
     fn hash<H>(&self, hasher: &mut H)
-    where 
-	H: Hasher,
+    where
+        H: Hasher,
     {
-	self.deref().hash(hasher);
+        self.deref().hash(hasher);
     }
 }
 
