@@ -1,6 +1,6 @@
-use crate::iter::{IntoIter, Iter, IterMut};
-use crate::ParallelVecParam;
-use core::marker::PhantomData;
+use crate::iter::IntoIter;
+use crate::{assert_in_bounds, out_of_bounds};
+use crate::{ParallelSliceMut, ParallelVecParam};
 use core::ops::{Deref, DerefMut};
 
 /// A contiguously growable heterogenous array type.
@@ -54,16 +54,6 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
         }
     }
 
-    /// Returns the number of elements in the vector, also referred to as its ‘length’.
-    pub fn len(&self) -> usize {
-        self.len
-    }
-
-    /// Returns `true` if the vector contains no elements.
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
     /// Returns the number of elements the vector can hold without reallocating.
     pub fn capacity(&self) -> usize {
         self.capacity
@@ -74,181 +64,6 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     /// Note that this method has no effect on the allocated capacity of the vector.
     pub fn clear(&mut self) {
         self.truncate(0);
-    }
-
-    /// Returns a immutable reference to the element at `index`, if available, or
-    /// [`None`] if it is out of bounds.
-    ///
-    /// [`None`]: Option::None
-    #[inline]
-    pub fn get(&self, index: usize) -> Option<Param::Ref<'_>> {
-        if self.len <= index {
-            None
-        } else {
-            unsafe { Some(self.get_unchecked(index)) }
-        }
-    }
-
-    /// Returns a mutable reference to the element at `index`, if available, or
-    /// [`None`] if it is out of bounds.
-    ///
-    /// [`None`]: Option::None
-    #[inline]
-    pub fn get_mut(&mut self, index: usize) -> Option<Param::RefMut<'_>> {
-        if self.len <= index {
-            None
-        } else {
-            unsafe { Some(self.get_unchecked_mut(index)) }
-        }
-    }
-
-    /// Returns the first element of the `ParallelVec`, or `None` if it is empty.
-    #[inline(always)]
-    pub fn first(&self) -> Option<Param::Ref<'_>> {
-        self.get(0)
-    }
-
-    /// Returns the mutable pointer first element of the `ParallelVec`, or `None` if it is empty.
-    #[inline(always)]
-    pub fn first_mut(&mut self) -> Option<Param::RefMut<'_>> {
-        self.get_mut(0)
-    }
-
-    /// Returns the last element of the `ParallelVec`, or `None` if it is empty.
-    #[inline]
-    pub fn last(&self) -> Option<Param::Ref<'_>> {
-        if self.len == 0 {
-            None
-        } else {
-            unsafe { Some(self.get_unchecked(self.len - 1)) }
-        }
-    }
-
-    /// Returns the mutable pointer last element of the `ParallelVec`, or `None` if it is empty.
-    #[inline]
-    pub fn last_mut(&mut self) -> Option<Param::RefMut<'_>> {
-        if self.len == 0 {
-            None
-        } else {
-            unsafe { Some(self.get_unchecked_mut(self.len - 1)) }
-        }
-    }
-
-    /// Gets a immutable reference to the elements at `index`.
-    ///
-    /// # Panics
-    /// This function will panic if `index` is >= `self.len`.
-    #[inline]
-    pub fn index(&self, index: usize) -> Param::Ref<'_> {
-        if self.len <= index {
-            panic!("ParallelVec: Index out of bounds: {}", index);
-        } else {
-            unsafe { self.get_unchecked(index) }
-        }
-    }
-
-    /// Gets a mutable reference to the elements at `index`.
-    ///
-    /// # Panics
-    /// This function will panic if `index` is >= `self.len`.
-    #[inline]
-    pub fn index_mut(&mut self, index: usize) -> Param::RefMut<'_> {
-        if self.len <= index {
-            panic!("ParallelVec: Index out of bounds: {}", index);
-        } else {
-            unsafe { self.get_unchecked_mut(index) }
-        }
-    }
-
-    /// Returns references to elements, without doing bounds checking.
-    ///
-    /// For a safe alternative see [`get`].
-    ///
-    /// # Safety
-    /// Calling this method with an out-of-bounds index is undefined behavior even if the resulting reference is not used.
-    ///
-    /// [`get`]: Self::get
-    #[inline]
-    pub unsafe fn get_unchecked(&self, index: usize) -> Param::Ref<'_> {
-        Param::as_ref(Param::ptr_at(self.storage, index))
-    }
-
-    /// Returns mutable references to elements, without doing bounds checking.
-    ///
-    /// For a safe alternative see [`get_mut`].
-    ///
-    /// # Safety
-    /// Calling this method with an out-of-bounds index is undefined behavior even if the resulting reference is not used.
-    ///
-    /// [`get_mut`]: Self::get_mut
-    #[inline]
-    pub unsafe fn get_unchecked_mut(&mut self, index: usize) -> Param::RefMut<'_> {
-        Param::as_mut(Param::ptr_at(self.storage, index))
-    }
-
-    /// Returns a raw pointer to the slice’s buffer.
-    ///
-    /// The caller must ensure that the slice outlives the pointer this function returns, or else it will end up pointing
-    /// to garbage.
-    ///
-    /// Modifying the container referenced by this slice may cause its buffer to be reallocated, which would also make any
-    /// pointers to it invalid.
-    #[inline]
-    pub fn as_mut_ptrs(&mut self) -> Param::Ptr {
-        Param::as_ptr(self.storage)
-    }
-
-    /// Gets the individual slices for very sub-`Vec`.
-    #[inline]
-    pub fn as_slices(&self) -> Param::Slices<'_> {
-        unsafe { Param::as_slices(Param::as_ptr(self.storage), self.len) }
-    }
-
-    /// Gets mutable individual slices for very sub-`Vec`.
-    #[inline]
-    pub fn as_slices_mut(&mut self) -> Param::SlicesMut<'_> {
-        unsafe { Param::as_slices_mut(self.as_mut_ptrs(), self.len) }
-    }
-
-    /// Swaps two elements.
-    ///
-    /// # Arguments
-    ///  - `a` - The index of the first element
-    ///  - `b` - The index of the second element
-    ///
-    /// # Panics
-    /// Panics if a or b are out of bounds.
-    pub fn swap(&mut self, a: usize, b: usize) {
-        if a >= self.len {
-            panic!("ParallelVec: Index out of bounds: {}", a);
-        }
-        if b >= self.len {
-            panic!("ParallelVec: Index out of bounds: {}", b);
-        }
-        unsafe {
-            self.swap_unchecked(a, b);
-        }
-    }
-
-    /// Swaps two elements in the slice, without doing bounds checking.
-    ///
-    /// For a safe alternative see [`swap`].
-    ///
-    /// # Arguments
-    ///  - `a` - The index of the first element
-    ///  - `b` - The index of the second element
-    ///
-    /// # Safety
-    /// Calling this method with an out-of-bounds index is undefined behavior.
-    /// The caller has to ensure that `a < self.len()` and `b < self.len()`.
-    ///
-    /// [`swap`]: Self::swap
-    #[inline]
-    pub unsafe fn swap_unchecked(&mut self, a: usize, b: usize) {
-        let base = Param::as_ptr(self.storage);
-        let a_ptr = Param::add(base, a);
-        let b_ptr = Param::add(base, b);
-        Param::swap(a_ptr, b_ptr);
     }
 
     /// Shortens the vector, keeping the first `len` elements and dropping the rest.
@@ -271,16 +86,6 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
         }
     }
 
-    /// Reverses the order of elements in the [`ParallelVec`], in place.
-    ///
-    /// This is a `O(n)` operation.
-    pub fn reverse(&mut self) {
-        if self.len == 0 {
-            return;
-        }
-        Param::reverse(self.as_slices_mut())
-    }
-
     /// Shrinks the capacity of the vector with a lower bound.
     ///
     /// The capacity will remain at least as large as both the length and
@@ -299,32 +104,6 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
             Param::dealloc(&mut self.storage, self.capacity);
             self.storage = dst;
             self.capacity = capacity;
-        }
-    }
-
-    /// Swaps all elements in `self` with those in `other`.
-    ///
-    /// The length of other must be the same as `self`.  
-    ///
-    /// # Panics
-    ///
-    /// This function will panic if the two slices have different lengths.
-    pub fn swap_with(&mut self, other: &mut Self) {
-        if self.len != other.len {
-            panic!(
-                "ParallelVec: attempted to use swap_with with ParallelVecs of different lenghths: {} vs {}",
-                self.len,
-                other.len
-            )
-        }
-        unsafe {
-            let mut a = self.as_mut_ptrs();
-            let mut b = other.as_mut_ptrs();
-            for _ in 0..self.len {
-                Param::swap(a, b);
-                a = Param::add(a, 1);
-                b = Param::add(b, 1);
-            }
         }
     }
 
@@ -385,9 +164,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     ///
     /// [`remove`]: Self::remove
     pub fn swap_remove(&mut self, index: usize) -> Param {
-        if index >= self.len {
-            panic!("ParallelVec: Index out of bounds {}", index);
-        }
+        assert_in_bounds(index, self.len);
 
         unsafe {
             let target_ptr = Param::ptr_at(self.storage, index);
@@ -411,7 +188,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     /// `len()`.
     pub fn insert(&mut self, index: usize, value: Param) {
         if index > self.len {
-            panic!("ParallelVec: Index out of bounds {}", index);
+            out_of_bounds(index, self.len);
         }
         unsafe {
             // TODO: (Performance) In the case where we do grow, this can result in redundant copying.
@@ -459,44 +236,6 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
             }
         }
     }
-
-    /// Returns an iterator over the [`ParallelVec`].
-    pub fn iter(&self) -> Iter<'_, Param> {
-        Iter {
-            base: Param::as_ptr(self.storage),
-            idx: 0,
-            len: self.len,
-            _marker: PhantomData,
-        }
-    }
-
-    /// Returns an iterator that allows modifying each value.
-    pub fn iter_mut(&mut self) -> IterMut<'_, Param> {
-        IterMut {
-            base: self.as_mut_ptrs(),
-            idx: 0,
-            len: self.len,
-            _marker: PhantomData,
-        }
-    }
-
-    /// Returns an iterator over the [`ParallelVec`].
-    pub fn iters(&self) -> Param::Iters<'_> {
-        unsafe {
-            let ptr = Param::as_ptr(self.storage);
-            let slices = Param::as_slices(ptr, self.len);
-            Param::iters(slices)
-        }
-    }
-
-    /// Gets individual iterators.
-    pub fn iters_mut(&mut self) -> Param::ItersMut<'_> {
-        unsafe {
-            let ptr = Param::as_ptr(self.storage);
-            let slices = Param::as_slices_mut(ptr, self.len);
-            Param::iters_mut(slices)
-        }
-    }
 }
 
 impl<Param: ParallelVecParam + Copy> ParallelVec<Param> {
@@ -516,30 +255,6 @@ impl<Param: ParallelVecParam + Copy> ParallelVec<Param> {
             }
         }
         new
-    }
-}
-
-impl<Param: ParallelVecParam + Clone> ParallelVec<Param> {
-    /// Fills self with elements by cloning value.
-    #[inline(always)]
-    pub fn fill(&mut self, value: Param) {
-        self.fill_with(|| value.clone());
-    }
-}
-
-impl<Param: ParallelVecParam> ParallelVec<Param> {
-    /// Fills self with elements returned by calling a closure repeatedly.
-    ///
-    /// This method uses a closure to create new values. If you’d rather [`Clone`]
-    /// a given value, use fill. If you want to use the [`Default`] trait to generate
-    /// values, you can pass `Default::default` as the argument.
-    pub fn fill_with<F: FnMut() -> Param>(&mut self, mut f: F) {
-        unsafe {
-            let base = self.as_mut_ptrs();
-            for idx in 0..self.len {
-                Param::write(Param::add(base, idx), f());
-            }
-        }
     }
 }
 
@@ -614,25 +329,25 @@ impl<Param: ParallelVecParam> Default for ParallelVec<Param> {
 }
 
 impl<Param: ParallelVecParam> Deref for ParallelVec<Param> {
-    type Target = ParallelSliceMut<'static, Param>
+    type Target = ParallelSliceMut<'static, Param>;
     fn deref(&self) -> &Self::Target {
-	// SAFE: Both ParallelVec and ParallelSliceMut have the same
-	// layout in memory due to #[repr(C)]
-	unsafe {
-		let ptr: *Self = self;
-		&*(ptr.cast::<Self::Target>())
-	}
+        // SAFE: Both ParallelVec and ParallelSliceMut have the same
+        // layout in memory due to #[repr(C)]
+        unsafe {
+            let ptr: *const Self = self;
+            &*(ptr.cast::<Self::Target>())
+        }
     }
 }
 
 impl<Param: ParallelVecParam> DerefMut for ParallelVec<Param> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-	// SAFE: Both ParallelVec and ParallelSliceMut have the same
-	// layout in memory due to #[repr(C)]
-	unsafe {
-		let ptr: *Self = self;
-		&mut *(ptr.cast::<Self::Target>())
-	}
+        // SAFE: Both ParallelVec and ParallelSliceMut have the same
+        // layout in memory due to #[repr(C)]
+        unsafe {
+            let ptr: *mut Self = self;
+            &mut *(ptr.cast::<Self::Target>())
+        }
     }
 }
 

@@ -1,12 +1,12 @@
 use crate::{ParallelVec, ParallelVecParam};
 use core::marker::PhantomData;
 
-/// An iterator over immutable references to values in a [`ParallelVec`].
+/// An iterator over immutable references to values in a [`ParallelSlice`].
 ///
-/// See [`ParallelVec::iter`].
+/// See [`ParallelSlice::iter`].
 ///
-/// [`ParallelVec`]: crate::ParallelVec
-/// [`ParallelVec::iter`]: crate::ParallelVec::iter
+/// [`ParallelSlice`]: crate::ParallelSlice
+/// [`ParallelSlice::iter`]: crate::ParallelSlice::iter
 pub struct Iter<'a, Param: ParallelVecParam> {
     pub(crate) base: Param::Ptr,
     pub(crate) idx: usize,
@@ -29,12 +29,12 @@ impl<'a, Param: ParallelVecParam> Iterator for Iter<'a, Param> {
     }
 }
 
-/// An iterator over mutable reference to values in a [`ParallelVec`].
+/// An iterator over mutable reference to values in a [`ParallelSliceMut`].
 ///
-/// See [`ParallelVec::iter_mut`].
+/// See [`ParallelSliceMut::iter_mut`].
 ///
-/// [`ParallelVec`]: crate::ParallelVec
-/// [`ParallelVec::iter_mut`]: crate::ParallelVec::iter_mut
+/// [`ParallelSliceMut`]: crate::ParallelSliceMut
+/// [`ParallelSliceMut::iter_mut`]: crate::ParallelSliceMut::iter_mut
 pub struct IterMut<'a, Param: ParallelVecParam> {
     pub(crate) base: Param::Ptr,
     pub(crate) idx: usize,

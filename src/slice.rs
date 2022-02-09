@@ -1,12 +1,8 @@
+use crate::assert_in_bounds;
 use crate::iter::{Iter, IterMut};
 use crate::ParallelVecParam;
 use core::marker::PhantomData;
 use core::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo};
-
-#[inline(always)]
-fn assert_in_bounds(idx: usize, len: usize) {
-    assert!(idx < len, "Index out of bounds: {} (len: {})", idx, len);
-}
 
 /// A immutable dynamically-sized view into a contiguous heterogeneous sequence.
 /// Contiguous here means that elements are laid out so that every element is
@@ -47,7 +43,6 @@ impl<'a, Param: ParallelVecParam> ParallelSlice<'a, Param> {
     ///   (not derived from the return value) for the duration of lifetime `'a`.
     ///   Both read and write accesses are forbidden.
     /// * The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`.
-    ///   See the safety documentation of [`pointer::offset`].
     ///
     /// [`ParallelVecParam::dangling()`]: ParallelVecParam::dangling
     pub unsafe fn from_raw_parts(data: Param::Storage, len: usize) -> Self {
@@ -124,7 +119,7 @@ impl<'a, Param: ParallelVecParam> ParallelSlice<'a, Param> {
         unsafe { Param::as_slices(Param::as_ptr(self.storage), self.len) }
     }
 
-    /// Returns an iterator over the [`ParallelVec`].
+    /// Returns an iterator over the [`ParallelSlice`].
     pub fn iter(&self) -> Iter<'_, Param> {
         Iter {
             base: Param::as_ptr(self.storage),
@@ -134,7 +129,7 @@ impl<'a, Param: ParallelVecParam> ParallelSlice<'a, Param> {
         }
     }
 
-    /// Returns an iterator over the [`ParallelVec`].
+    /// Returns an iterator over the [`ParallelSlice`].
     pub fn iters(&self) -> Param::Iters<'_> {
         unsafe {
             let ptr = Param::as_ptr(self.storage);
@@ -183,7 +178,6 @@ impl<'a, Param: ParallelVecParam> ParallelSliceMut<'a, Param> {
     ///   (not derived from the return value) for the duration of lifetime `'a`.
     ///   Both read and write accesses are forbidden.
     /// * The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`.
-    ///   See the safety documentation of [`pointer::offset`].
     ///
     /// [`ParallelVecParam::dangling()`]: ParallelVecParam::dangling
     pub unsafe fn from_raw_parts(data: Param::Storage, len: usize) -> Self {
@@ -369,7 +363,7 @@ impl<'a, Param: ParallelVecParam> ParallelSliceMut<'a, Param> {
         Param::swap(a_ptr, b_ptr);
     }
 
-    /// Reverses the order of elements in the [`ParallelVec`], in place.
+    /// Reverses the order of elements in the [`ParallelSliceMut`], in place.
     ///
     /// This is a `O(n)` operation.
     pub fn reverse(&mut self) {
@@ -389,9 +383,8 @@ impl<'a, Param: ParallelVecParam> ParallelSliceMut<'a, Param> {
     pub fn swap_with(&mut self, other: &mut Self) {
         if self.len != other.len {
             panic!(
-                "ParallelVec: attempted to use swap_with with ParallelVecs of different lenghths: {} vs {}",
-                self.len,
-                other.len
+                "Attempted to use swap_with with slices of different lenghths: {} vs {}",
+                self.len, other.len
             )
         }
         unsafe {
@@ -405,7 +398,7 @@ impl<'a, Param: ParallelVecParam> ParallelSliceMut<'a, Param> {
         }
     }
 
-    /// Returns an iterator over the [`ParallelVec`].
+    /// Returns an iterator over the [`ParallelSliceMut`].
     pub fn iter(&self) -> Iter<'_, Param> {
         Iter {
             base: Param::as_ptr(self.storage),
@@ -425,7 +418,7 @@ impl<'a, Param: ParallelVecParam> ParallelSliceMut<'a, Param> {
         }
     }
 
-    /// Returns an iterator over the [`ParallelVec`].
+    /// Returns an iterator over the [`ParallelSliceMut`].
     pub fn iters(&self) -> Param::Iters<'_> {
         unsafe {
             let ptr = Param::as_ptr(self.storage);
