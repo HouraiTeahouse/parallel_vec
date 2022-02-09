@@ -16,7 +16,7 @@ default = ["std"]
 std = []
 
 [package.metadata.docs.rs]
-features = ["serde"]
+all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]

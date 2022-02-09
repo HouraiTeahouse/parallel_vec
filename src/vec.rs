@@ -1,9 +1,14 @@
-use crate::iter::IntoIter;
-use crate::{assert_in_bounds, out_of_bounds};
-use crate::{ParallelParam, ParallelSliceMut};
+use crate::{
+	assert_in_bounds, out_of_bounds,
+	ParallelParam, ParallelSliceMut,
+	iter::IntoIter,
+};
 use alloc::vec::Vec;
-use core::fmt::{Debug, Formatter};
-use core::ops::{Deref, DerefMut};
+use core::{
+	fmt::{Debug, Formatter},
+	ops::{Deref, DerefMut},
+	hash::{Hash, Hasher},
+};
 
 /// A contiguously growable heterogenous array type.
 ///
@@ -309,6 +314,19 @@ where
     fn fmt(&self, fmt: &mut Formatter<'_>) -> core::fmt::Result {
         fmt.write_str("ParallelVec")?;
         fmt.debug_list().entries(self.iter()).finish()
+    }
+}
+
+impl<'a, Param: ParallelParam> Hash for ParallelVec<Param>
+where
+    Param: 'a,
+    Param::Ref<'a>: Hash,
+{
+    fn hash<H>(&self, hasher: &mut H)
+    where 
+	H: Hasher,
+    {
+	self.deref().hash(hasher);
     }
 }
 

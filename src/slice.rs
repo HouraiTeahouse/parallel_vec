@@ -1,8 +1,11 @@
 use crate::iter::{Iter, IterMut};
 use crate::ParallelParam;
 use crate::{assert_in_bounds, assert_in_bounds_inclusive};
-use core::marker::PhantomData;
-use core::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo};
+use core::{
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+    ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo},
+};
 
 /// A immutable dynamically-sized view into a contiguous heterogeneous sequence.
 /// Contiguous here means that elements are laid out so that every element is
@@ -135,6 +138,22 @@ impl<'a, Param: ParallelParam> ParallelSlice<'a, Param> {
             let ptr = Param::as_ptr(self.storage);
             let slices = Param::as_slices(ptr, self.len);
             Param::iters(slices)
+        }
+    }
+}
+
+impl<'s, 'r, Param> Hash for ParallelSlice<'s, Param> 
+where 
+    Param: ParallelParam + 's,
+    Param::Ref<'s>: Hash,
+    'r: 's
+{
+    fn hash<H>(&self, hasher: &mut H) 
+    where
+        H: Hasher {
+        self.len.hash(hasher);
+        for item in self.iter() {
+            item.hash(hasher);
         }
     }
 }
@@ -382,9 +401,10 @@ impl<'a, Param: ParallelParam> ParallelSliceMut<'a, Param> {
     #[inline]
     pub unsafe fn swap_unchecked(&mut self, a: usize, b: usize) {
         let base = Param::as_ptr(self.storage);
-        let a_ptr = Param::add(base, a);
-        let b_ptr = Param::add(base, b);
-        Param::swap(a_ptr, b_ptr);
+        Param::swap(
+            Param::add(base, a),
+            Param::add(base, b)
+        );
     }
 
     /// Reverses the order of elements in the [`ParallelSliceMut`], in place.
@@ -481,6 +501,22 @@ impl<'a, Param: ParallelParam> ParallelSliceMut<'a, Param> {
             for idx in 0..self.len {
                 Param::write(Param::add(base, idx), f());
             }
+        }
+    }
+}
+
+impl<'s, 'r, Param> Hash for ParallelSliceMut<'s, Param> 
+where 
+    Param: ParallelParam + 's,
+    Param::Ref<'s>: Hash,
+    'r: 's
+{
+    fn hash<H>(&self, hasher: &mut H) 
+    where
+        H: Hasher {
+        self.len.hash(hasher);
+        for item in self.iter() {
+            item.hash(hasher);
         }
     }
 }
