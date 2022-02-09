@@ -1,6 +1,6 @@
 use crate::iter::IntoIter;
 use crate::{assert_in_bounds, out_of_bounds};
-use crate::{ParallelSliceMut, ParallelParam};
+use crate::{ParallelParam, ParallelSliceMut};
 use core::ops::{Deref, DerefMut};
 
 /// A contiguously growable heterogenous array type.
@@ -260,7 +260,7 @@ impl<Param: ParallelParam> Drop for ParallelVec<Param> {
     fn drop(&mut self) {
         self.len = 0;
         unsafe {
-	    self.drop_range(0, self.len);
+            self.drop_range(0, self.len);
             Param::dealloc(&mut self.storage, self.capacity);
         }
     }

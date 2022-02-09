@@ -573,9 +573,7 @@ impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>> f
     }
 }
 
-impl<'s, Param: ParallelParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>>
-    for Range<usize>
-{
+impl<'s, Param: ParallelParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>> for Range<usize> {
     type Output = ParallelSliceMut<'s, Param>;
     fn get_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
         if self.start > slice.len || self.end > slice.len {
@@ -684,9 +682,7 @@ impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for 
     }
 }
 
-impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>>
-    for RangeTo<usize>
-{
+impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>> for RangeTo<usize> {
     type Output = ParallelSlice<'s, Param>;
     fn get(self, slice: &ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
         Range {
@@ -726,9 +722,7 @@ impl<'s, Param: ParallelParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>
     }
 }
 
-impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSlice<'s, Param>>
-    for RangeFrom<usize>
-{
+impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for RangeFrom<usize> {
     type Output = ParallelSlice<'s, Param>;
     fn get(self, slice: &ParallelSlice<'s, Param>) -> Option<Self::Output> {
         Range {

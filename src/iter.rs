@@ -1,4 +1,4 @@
-use crate::{ParallelVec, ParallelParam};
+use crate::{ParallelParam, ParallelVec};
 use core::marker::PhantomData;
 
 /// An iterator over immutable references to values in a [`ParallelSlice`].
