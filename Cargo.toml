@@ -12,7 +12,7 @@ categories = ["data-structures", "no-std"]
 license = "MIT OR Apache-2.0"
 
 [features]
-default = ["std", "serde"]
+default = ["std"]
 std = []
 
 [dependencies]

@@ -49,7 +49,7 @@ jobs:
         if: matrix.std == 'no-std'
         with:
           command: build
-          args: --no-default-features
+          args: --no-default-features --features "serde"
         env:
           CARGO_INCREMENTAL: 0
           RUSTFLAGS: "-C debuginfo=0"
@@ -58,7 +58,7 @@ jobs:
         if: matrix.std == 'std'
         with:
           command: miri
-          args: test
+          args: test --all-features
         env:
           CARGO_INCREMENTAL: 0
           RUSTFLAGS: "-C debuginfo=0"
