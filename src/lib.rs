@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 #![deny(missing_docs)]
 #![feature(generic_associated_types)]
+#![feature(doc_cfg)]
 #![no_std]
 
 //! [`ParallelVec`] is a generic collection of contiguously stored heterogenous values with
@@ -52,6 +53,10 @@
 //! By default, this crate requires the standard library. Disabling the default features
 //! enables this crate to compile in `#![no_std]` environments. There must be a set global
 //! allocator and heap support for this crate to work.
+//!
+//!  ## `serde` Support
+//! `ParallelVec` can be serialized if it's parameters can be serialized. This is disabled by
+//! default. Use the `serde` feature to enable support for serialization and deserialization.
 
 extern crate alloc;
 
@@ -64,9 +69,13 @@ pub mod iter;
 /// Implementations for [`ParallelParam`].
 pub mod param;
 #[cfg(feature = "serde")]
+#[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
 mod serde;
 mod slice;
 mod vec;
+
+#[cfg(feature = "serde")]
+pub use crate::serde::*;
 
 pub use param::ParallelParam;
 pub use slice::{ParallelSlice, ParallelSliceMut};

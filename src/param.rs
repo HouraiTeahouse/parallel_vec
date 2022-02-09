@@ -1,4 +1,3 @@
-#[cfg(feature = "std")]
 use super::{ParallelVec, ParallelVecConversionError};
 use alloc::{
     alloc::{alloc, dealloc, Layout},
@@ -29,7 +28,6 @@ pub unsafe trait ParallelParam: Sized + private::Sealed {
     type Ref<'a>;
     /// A set of mutable references of the parameter.
     type RefMut<'a>;
-    #[cfg(feature = "std")]
     /// A set of [`Vec<T>`]s of the parameter.
     type Vecs;
     /// A set of mutable slice references of the parameter.
@@ -81,14 +79,12 @@ pub unsafe trait ParallelParam: Sized + private::Sealed {
     ///
     /// Returns `None` if not all of the `Vec`s share the same
     /// length.
-    #[cfg(feature = "std")]
     fn get_vec_len(vecs: &Self::Vecs) -> Option<usize>;
 
     /// Gets the underlying pointers for the associated `Vec`s.
     ///
     /// # Safety
     /// The provided `Vec`s must be correctly allocated.
-    #[cfg(feature = "std")]
     unsafe fn get_vec_ptrs(vecs: &mut Self::Vecs) -> Self::Ptr;
 
     /// Adds `offset` to all of the pointers in `base`.
@@ -231,7 +227,6 @@ macro_rules! impl_parallel_vec_param {
             type RefMut<'a> = (&'a mut $t1, $(&'a mut $ts,)*);
             type Slices<'a> = (&'a [$t1] $(, &'a [$ts])*);
             type SlicesMut<'a> = (&'a mut [$t1] $(, &'a mut [$ts])*);
-            #[cfg(feature="std")]
             type Vecs = (Vec<$t1> $(, Vec<$ts>)*);
             type Ptr = (*mut $t1 $(, *mut $ts)*);
             type Offsets = (usize $(, skip_first!($ts, usize))*);
@@ -390,7 +385,6 @@ macro_rules! impl_parallel_vec_param {
                 $(core::ptr::drop_in_place($ts);)*
             }
 
-            #[cfg(feature="std")]
             fn get_vec_len(vecs: &Self::Vecs) -> Option<usize> {
                 let ($t1, $($ts),*) = vecs;
                 let len = $t1.len();
@@ -402,14 +396,12 @@ macro_rules! impl_parallel_vec_param {
                 Some(len)
             }
 
-            #[cfg(feature="std")]
             unsafe fn get_vec_ptrs(vecs: &mut Self::Vecs) -> Self::Ptr {
                 let ($t1, $($ts),*) = vecs;
                 ($t1.as_mut_ptr() $(, $ts.as_mut_ptr())*)
             }
         }
 
-        #[cfg(feature="std")]
         impl<$t1: 'static $(, $ts: 'static)*> TryFrom<(Vec<$t1> $(, Vec<$ts>)*)> for ParallelVec<($t1 $(, $ts)*)> {
             type Error = ParallelVecConversionError;
             fn try_from(mut vecs: (Vec<$t1> $(, Vec<$ts>)*)) -> Result<Self, Self::Error> {

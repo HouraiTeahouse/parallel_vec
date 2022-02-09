@@ -1,6 +1,6 @@
 [package]
 name = "parallel_vec"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 authors = ["Hourai Teahouse Developers <contact@houraiteahouse.net>"]
 description = "A generic contiguous collection of heterogenous values."
@@ -14,6 +14,10 @@ license = "MIT OR Apache-2.0"
 [features]
 default = ["std"]
 std = []
+
+[package.metadata.docs.rs]
+features = ["serde"]
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 serde = { version = "1.0", optional  = true, default-features = false, features = ["alloc"]}
