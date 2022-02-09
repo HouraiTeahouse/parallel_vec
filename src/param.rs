@@ -1,9 +1,10 @@
 #[cfg(feature = "std")]
 use super::{ParallelVec, ParallelVecConversionError};
-use alloc::alloc::{alloc, dealloc, Layout};
+use alloc::{
+    alloc::{alloc, dealloc, Layout},
+    vec::Vec,
+};
 use core::ptr::NonNull;
-#[cfg(feature = "std")]
-use std::vec::Vec;
 
 /// This trait contains the basic operations for creating variadic
 /// parallel vector implementations.
@@ -19,7 +20,7 @@ use std::vec::Vec;
 pub unsafe trait ParallelParam: Sized + private::Sealed {
     /// A set of [`NonNull`] pointers of the parameter.
     /// This is the main backing storage pointers for [`ParallelVec`].
-    type Storage: Copy;
+    type Storage: Copy + Eq;
     /// A set of pointers of the parameter.
     type Ptr: Copy;
     /// A set of memory offsets of the parameter.

@@ -120,7 +120,7 @@ impl<'a, Param: ParallelParam> ParallelSlice<'a, Param> {
     }
 
     /// Returns an iterator over the [`ParallelSlice`].
-    pub fn iter(&self) -> Iter<'_, Param> {
+    pub fn iter(&self) -> Iter<'a, Param> {
         Iter {
             base: Param::as_ptr(self.storage),
             idx: 0,
@@ -423,7 +423,7 @@ impl<'a, Param: ParallelParam> ParallelSliceMut<'a, Param> {
     }
 
     /// Returns an iterator over the [`ParallelSliceMut`].
-    pub fn iter(&self) -> Iter<'_, Param> {
+    pub fn iter(&self) -> Iter<'a, Param> {
         Iter {
             base: Param::as_ptr(self.storage),
             idx: 0,
@@ -433,7 +433,7 @@ impl<'a, Param: ParallelParam> ParallelSliceMut<'a, Param> {
     }
 
     /// Returns an iterator that allows modifying each value.
-    pub fn iter_mut(&mut self) -> IterMut<'_, Param> {
+    pub fn iter_mut(&mut self) -> IterMut<'a, Param> {
         IterMut {
             base: self.as_mut_ptrs(),
             idx: 0,

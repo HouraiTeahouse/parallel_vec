@@ -63,6 +63,8 @@ extern crate std;
 pub mod iter;
 /// Implementations for [`ParallelParam`].
 pub mod param;
+#[cfg(feature = "serde")]
+mod serde;
 mod slice;
 mod vec;
 

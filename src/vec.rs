@@ -1,6 +1,8 @@
 use crate::iter::IntoIter;
 use crate::{assert_in_bounds, out_of_bounds};
 use crate::{ParallelParam, ParallelSliceMut};
+use alloc::vec::Vec;
+use core::fmt::{Debug, Formatter};
 use core::ops::{Deref, DerefMut};
 
 /// A contiguously growable heterogenous array type.
@@ -269,6 +271,47 @@ impl<Param: ParallelParam> Drop for ParallelVec<Param> {
     }
 }
 
+impl<Param: ParallelParam> From<Vec<Param>> for ParallelVec<Param> {
+    fn from(value: Vec<Param>) -> Self {
+        Self::from_iter(value.into_iter())
+    }
+}
+
+impl<'a, Param: ParallelParam> PartialEq for ParallelVec<Param>
+where
+    Param: 'a,
+    Param::Ref<'a>: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        if self.len != other.len {
+            return false;
+        }
+        if self.storage == other.storage {
+            // Pointing to the same storage. Shortcut out.
+            return true;
+        }
+        self.iter().zip(other.iter()).all(|(a, b)| a.eq(&b))
+    }
+}
+
+impl<'a, Param: ParallelParam> Eq for ParallelVec<Param>
+where
+    Param: 'a,
+    Param::Ref<'a>: Eq,
+{
+}
+
+impl<'a, Param: ParallelParam> Debug for ParallelVec<Param>
+where
+    Param: 'a,
+    Param::Ref<'a>: Debug,
+{
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> core::fmt::Result {
+        fmt.write_str("ParallelVec")?;
+        fmt.debug_list().entries(self.iter()).finish()
+    }
+}
+
 impl<Param: ParallelParam> FromIterator<Param> for ParallelVec<Param> {
     fn from_iter<T>(iter: T) -> Self
     where
@@ -352,6 +395,7 @@ impl<Param: ParallelParam> DerefMut for ParallelVec<Param> {
 #[cfg(test)]
 mod tests {
     use super::ParallelVec;
+    use std::convert::From;
     use std::rc::Rc;
     use std::vec::Vec;
 
@@ -712,6 +756,22 @@ mod tests {
         assert_eq!(a, &[1, 3, 5, 7]);
         assert_eq!(b, &[2, 4, 6, 8]);
         assert_eq!(repeated.len(), 12);
+    }
+
+    #[test]
+    fn test_eq() {
+        let a = ParallelVec::from(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        let b = ParallelVec::from(vec![(1, 2), (3, 4), (9, 6), (7, 8)]);
+        let c = ParallelVec::from(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        assert!(a == a);
+        assert!(a != b);
+        assert!(a == c);
+        assert!(b != a);
+        assert!(b == b);
+        assert!(b != c);
+        assert!(c == a);
+        assert!(c != b);
+        assert!(c == c);
     }
 
     #[test]
