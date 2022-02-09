@@ -3,6 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/parallel-vec.svg)](https://crates.io/crates/parallel-vec)
 [![Documentation](https://docs.rs/parallel-vec/badge.svg)](https://docs.rs/parallel-vec)
 ![License](https://img.shields.io/crates/l/parallel-vec.svg)
+[![codecov](https://codecov.io/gh/HouraiTeahouse/parallel_vec/branch/main/graph/badge.svg?token=BEKDFDO5HW)](https://codecov.io/gh/HouraiTeahouse/parallel_vec)
 
 `ParallelVec` is a generic collection of contiguously stored heterogenous values with
 an API similar to that of a `Vec<(T1, T2, ...)>` but stores the data laid out as a 
@@ -15,7 +16,7 @@ applicable anywhere that cache coherency and memory bandwidth are important for 
 
 Unlike a struct of `Vec`s, only one length and capacity field is stored, and only one contiguous
 allocation is made for the entire data structs. Upon reallocation, a struct of `Vec` may apply
-additional allocation strain. `ParallelVec` only allocates once per resize.
+additional allocation pressure. `ParallelVec` only allocates once per resize.
 
 ## Example
 ```rust
