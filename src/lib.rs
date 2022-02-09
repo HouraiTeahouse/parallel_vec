@@ -61,12 +61,12 @@ extern crate std;
 
 /// A collection of iterators types for [`ParallelVec`].
 pub mod iter;
-/// Implementations for [`ParallelVecParam`].
+/// Implementations for [`ParallelParam`].
 pub mod param;
 mod slice;
 mod vec;
 
-pub use param::ParallelVecParam;
+pub use param::ParallelParam;
 pub use slice::{ParallelSlice, ParallelSliceMut};
 pub use vec::ParallelVec;
 

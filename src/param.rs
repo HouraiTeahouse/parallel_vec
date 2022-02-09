@@ -16,7 +16,7 @@ use std::vec::Vec;
 ///
 /// # Safety
 /// None of the associated functions can panic.
-pub unsafe trait ParallelVecParam: Sized + private::Sealed {
+pub unsafe trait ParallelParam: Sized + private::Sealed {
     /// A set of [`NonNull`] pointers of the parameter.
     /// This is the main backing storage pointers for [`ParallelVec`].
     type Storage: Copy;
@@ -189,7 +189,7 @@ pub unsafe trait ParallelVecParam: Sized + private::Sealed {
 ///
 /// Users will not need to deal with this type directly, as there
 /// is no way to instantiate a copy of this struct safely.
-pub struct MemoryLayout<Param: ParallelVecParam> {
+pub struct MemoryLayout<Param: ParallelParam> {
     layout: Layout,
     offsets: Param::Offsets,
 }
@@ -224,7 +224,7 @@ macro_rules! skip_first {
 
 macro_rules! impl_parallel_vec_param {
     ($t1: ident, $v1: ident, $($ts:ident, $vs:ident),*) => {
-        unsafe impl<$t1: 'static $(, $ts: 'static)*> ParallelVecParam for ($t1 $(, $ts)*) {
+        unsafe impl<$t1: 'static $(, $ts: 'static)*> ParallelParam for ($t1 $(, $ts)*) {
             type Storage = (NonNull<$t1> $(, NonNull<$ts>)*);
             type Ref<'a> = (&'a $t1, $(&'a $ts,)*);
             type RefMut<'a> = (&'a mut $t1, $(&'a mut $ts,)*);
@@ -412,14 +412,14 @@ macro_rules! impl_parallel_vec_param {
         impl<$t1: 'static $(, $ts: 'static)*> TryFrom<(Vec<$t1> $(, Vec<$ts>)*)> for ParallelVec<($t1 $(, $ts)*)> {
             type Error = ParallelVecConversionError;
             fn try_from(mut vecs: (Vec<$t1> $(, Vec<$ts>)*)) -> Result<Self, Self::Error> {
-                let len = <($t1 $(, $ts)*) as ParallelVecParam>::get_vec_len(&vecs);
+                let len = <($t1 $(, $ts)*) as ParallelParam>::get_vec_len(&vecs);
                 if let Some(len) = len {
                     let parallel_vec = Self::with_capacity(len);
                     // SAFE: This is a move. Nothing should be dropped here.
                     unsafe {
-                        let src = <($t1 $(, $ts)*) as ParallelVecParam>::get_vec_ptrs(&mut vecs);
-                        let dst = <($t1 $(, $ts)*) as ParallelVecParam>::as_ptr(parallel_vec.storage);
-                        <($t1 $(, $ts)*) as ParallelVecParam>::copy_to_nonoverlapping(src, dst, len);
+                        let src = <($t1 $(, $ts)*) as ParallelParam>::get_vec_ptrs(&mut vecs);
+                        let dst = <($t1 $(, $ts)*) as ParallelParam>::as_ptr(parallel_vec.storage);
+                        <($t1 $(, $ts)*) as ParallelParam>::copy_to_nonoverlapping(src, dst, len);
                         core::mem::forget(vecs);
                     }
                     Ok(parallel_vec)

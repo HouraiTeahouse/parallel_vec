@@ -1,6 +1,6 @@
 use crate::iter::IntoIter;
 use crate::{assert_in_bounds, out_of_bounds};
-use crate::{ParallelSliceMut, ParallelVecParam};
+use crate::{ParallelSliceMut, ParallelParam};
 use core::ops::{Deref, DerefMut};
 
 /// A contiguously growable heterogenous array type.
@@ -15,22 +15,18 @@ use core::ops::{Deref, DerefMut};
 ///
 /// [structures of arrays]: https://en.wikipedia.org/wiki/AoS_and_SoA#Structure_of_arrays
 #[repr(C)]
-pub struct ParallelVec<Param: ParallelVecParam> {
+pub struct ParallelVec<Param: ParallelParam> {
     pub(crate) len: usize,
     pub(crate) storage: Param::Storage,
     pub(crate) capacity: usize,
 }
 
-impl<Param: ParallelVecParam> ParallelVec<Param> {
+impl<Param: ParallelParam> ParallelVec<Param> {
     /// Constructs a new, empty `ParallelVec`.
     ///
     /// The vector will not allocate until elements are pushed onto it.
     pub fn new() -> Self {
-        Self {
-            len: 0,
-            capacity: 0,
-            storage: Param::dangling(),
-        }
+        Self::with_capacity(0)
     }
 
     /// Constructs a new, empty [`ParallelVec`] with the specified capacity.  
@@ -41,15 +37,15 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     /// It is important to note that although the returned vector has the capacity specified,
     /// the vector will have a zero length.
     pub fn with_capacity(capacity: usize) -> Self {
-        if capacity == 0 {
-            Self::new()
-        } else {
-            unsafe {
-                Self {
-                    len: 0,
-                    capacity,
-                    storage: Param::alloc(capacity),
-                }
+        unsafe {
+            Self {
+                len: 0,
+                capacity,
+                storage: if capacity == 0 {
+                    Param::dangling()
+                } else {
+                    Param::alloc(capacity)
+                },
             }
         }
     }
@@ -75,14 +71,16 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
         if self.len <= len {
             return;
         }
-        let start = len;
-        let end = self.len;
-        self.len = len;
         unsafe {
-            let base = Param::as_ptr(self.storage);
-            for idx in start..end {
-                Param::drop(Param::add(base, idx));
-            }
+            self.drop_range(len, self.len);
+            self.len = len;
+        }
+    }
+
+    unsafe fn drop_range(&mut self, start: usize, end: usize) {
+        let base = Param::as_ptr(self.storage);
+        for idx in start..end {
+            Param::drop(Param::add(base, idx));
         }
     }
 
@@ -93,18 +91,18 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     ///
     /// If the current capacity is less than the lower limit, this is a no-op.
     pub fn shrink_to(&mut self, min_capacity: usize) {
+        if min_capacity > self.capacity {
+            return;
+        }
+        let capacity = core::cmp::max(self.len, min_capacity);
+        let src = Param::as_ptr(self.storage);
         unsafe {
-            if min_capacity > self.capacity {
-                return;
-            }
-            let capacity = core::cmp::max(self.len, min_capacity);
-            let src = Param::as_ptr(self.storage);
             let dst = Param::alloc(capacity);
             Param::copy_to_nonoverlapping(src, Param::as_ptr(dst), self.len);
             Param::dealloc(&mut self.storage, self.capacity);
             self.storage = dst;
-            self.capacity = capacity;
         }
+        self.capacity = capacity;
     }
 
     /// Shrinks the capacity of the vector as much as possible.
@@ -238,7 +236,7 @@ impl<Param: ParallelVecParam> ParallelVec<Param> {
     }
 }
 
-impl<Param: ParallelVecParam + Copy> ParallelVec<Param> {
+impl<Param: ParallelParam + Copy> ParallelVec<Param> {
     /// Creates a [`ParallelVec`] by repeating `self` `n` times.
     pub fn repeat(&self, n: usize) -> ParallelVec<Param> {
         let mut new = ParallelVec::with_capacity(n * self.len);
@@ -258,20 +256,17 @@ impl<Param: ParallelVecParam + Copy> ParallelVec<Param> {
     }
 }
 
-impl<Param: ParallelVecParam> Drop for ParallelVec<Param> {
+impl<Param: ParallelParam> Drop for ParallelVec<Param> {
     fn drop(&mut self) {
         self.len = 0;
         unsafe {
-            let base = Param::as_ptr(self.storage);
-            for idx in 0..self.len {
-                Param::drop(Param::add(base, idx));
-            }
+	    self.drop_range(0, self.len);
             Param::dealloc(&mut self.storage, self.capacity);
         }
     }
 }
 
-impl<Param: ParallelVecParam> FromIterator<Param> for ParallelVec<Param> {
+impl<Param: ParallelParam> FromIterator<Param> for ParallelVec<Param> {
     fn from_iter<T>(iter: T) -> Self
     where
         T: IntoIterator<Item = Param>,
@@ -286,7 +281,7 @@ impl<Param: ParallelVecParam> FromIterator<Param> for ParallelVec<Param> {
     }
 }
 
-impl<Param: ParallelVecParam> IntoIterator for ParallelVec<Param> {
+impl<Param: ParallelParam> IntoIterator for ParallelVec<Param> {
     type Item = Param;
     type IntoIter = IntoIter<Param>;
     fn into_iter(self) -> Self::IntoIter {
@@ -294,7 +289,7 @@ impl<Param: ParallelVecParam> IntoIterator for ParallelVec<Param> {
     }
 }
 
-impl<Param: ParallelVecParam> Extend<Param> for ParallelVec<Param> {
+impl<Param: ParallelParam> Extend<Param> for ParallelVec<Param> {
     fn extend<T>(&mut self, iter: T)
     where
         T: IntoIterator<Item = Param>,
@@ -308,7 +303,7 @@ impl<Param: ParallelVecParam> Extend<Param> for ParallelVec<Param> {
     }
 }
 
-impl<Param: ParallelVecParam + Clone> Clone for ParallelVec<Param> {
+impl<Param: ParallelParam + Clone> Clone for ParallelVec<Param> {
     fn clone(&self) -> Self {
         let mut clone = Self::with_capacity(self.len);
         unsafe {
@@ -322,13 +317,13 @@ impl<Param: ParallelVecParam + Clone> Clone for ParallelVec<Param> {
     }
 }
 
-impl<Param: ParallelVecParam> Default for ParallelVec<Param> {
+impl<Param: ParallelParam> Default for ParallelVec<Param> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<Param: ParallelVecParam> Deref for ParallelVec<Param> {
+impl<Param: ParallelParam> Deref for ParallelVec<Param> {
     type Target = ParallelSliceMut<'static, Param>;
     fn deref(&self) -> &Self::Target {
         // SAFE: Both ParallelVec and ParallelSliceMut have the same
@@ -340,7 +335,7 @@ impl<Param: ParallelVecParam> Deref for ParallelVec<Param> {
     }
 }
 
-impl<Param: ParallelVecParam> DerefMut for ParallelVec<Param> {
+impl<Param: ParallelParam> DerefMut for ParallelVec<Param> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         // SAFE: Both ParallelVec and ParallelSliceMut have the same
         // layout in memory due to #[repr(C)]

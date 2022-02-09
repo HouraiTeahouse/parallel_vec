@@ -1,4 +1,4 @@
-use crate::{ParallelVec, ParallelVecParam};
+use crate::{ParallelVec, ParallelParam};
 use core::marker::PhantomData;
 
 /// An iterator over immutable references to values in a [`ParallelSlice`].
@@ -7,14 +7,14 @@ use core::marker::PhantomData;
 ///
 /// [`ParallelSlice`]: crate::ParallelSlice
 /// [`ParallelSlice::iter`]: crate::ParallelSlice::iter
-pub struct Iter<'a, Param: ParallelVecParam> {
+pub struct Iter<'a, Param: ParallelParam> {
     pub(crate) base: Param::Ptr,
     pub(crate) idx: usize,
     pub(crate) len: usize,
     pub(crate) _marker: PhantomData<&'a Param>,
 }
 
-impl<'a, Param: ParallelVecParam> Iterator for Iter<'a, Param> {
+impl<'a, Param: ParallelParam> Iterator for Iter<'a, Param> {
     type Item = Param::Ref<'a>;
     fn next(&mut self) -> Option<Param::Ref<'a>> {
         unsafe {
@@ -35,14 +35,14 @@ impl<'a, Param: ParallelVecParam> Iterator for Iter<'a, Param> {
 ///
 /// [`ParallelSliceMut`]: crate::ParallelSliceMut
 /// [`ParallelSliceMut::iter_mut`]: crate::ParallelSliceMut::iter_mut
-pub struct IterMut<'a, Param: ParallelVecParam> {
+pub struct IterMut<'a, Param: ParallelParam> {
     pub(crate) base: Param::Ptr,
     pub(crate) idx: usize,
     pub(crate) len: usize,
     pub(crate) _marker: PhantomData<&'a Param>,
 }
 
-impl<'a, Param: ParallelVecParam> Iterator for IterMut<'a, Param> {
+impl<'a, Param: ParallelParam> Iterator for IterMut<'a, Param> {
     type Item = Param::RefMut<'a>;
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {
@@ -63,12 +63,12 @@ impl<'a, Param: ParallelVecParam> Iterator for IterMut<'a, Param> {
 ///
 /// [`ParallelVec`]: crate::ParallelVec
 /// [`ParallelVec::iter_mut`]: crate::ParallelVec::into_iter
-pub struct IntoIter<Param: ParallelVecParam> {
+pub struct IntoIter<Param: ParallelParam> {
     pub(crate) vec: ParallelVec<Param>,
     pub(crate) idx: usize,
 }
 
-impl<Param: ParallelVecParam> Iterator for IntoIter<Param> {
+impl<Param: ParallelParam> Iterator for IntoIter<Param> {
     type Item = Param;
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {

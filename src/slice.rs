@@ -1,6 +1,6 @@
 use crate::assert_in_bounds;
 use crate::iter::{Iter, IterMut};
-use crate::ParallelVecParam;
+use crate::ParallelParam;
 use core::marker::PhantomData;
 use core::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo};
 
@@ -11,7 +11,7 @@ use core::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo};
 /// Unlike a struct of slices, this type only stores one length instead
 /// of duplicating the values across multiple slice fields.
 #[repr(C)]
-pub struct ParallelSlice<'a, Param: ParallelVecParam> {
+pub struct ParallelSlice<'a, Param: ParallelParam> {
     // Do not reorder these fields. These must be in the same order as
     // ParallelVec for Deref and DerefMut to work properly.
     len: usize,
@@ -19,7 +19,7 @@ pub struct ParallelSlice<'a, Param: ParallelVecParam> {
     _marker: PhantomData<&'a usize>,
 }
 
-impl<'a, Param: ParallelVecParam> ParallelSlice<'a, Param> {
+impl<'a, Param: ParallelParam> ParallelSlice<'a, Param> {
     /// Forms a slice from a pointer and a length.
     ///
     /// The `len` argument is the number of elements, not the number of bytes.
@@ -37,14 +37,14 @@ impl<'a, Param: ParallelVecParam> ParallelSlice<'a, Param> {
     ///       reason for this is that enum layout optimizations may rely on references
     ///       (including slices of any length) being aligned and non-null to distinguish
     ///       them from other data. You can obtain a pointer that is usable as `data`
-    ///       for zero-length slices using [`ParallelVecParam::dangling()`].
+    ///       for zero-length slices using [`ParallelParam::dangling()`].
     /// * `data` must point to `len` consecutive properly initialized values of type `Param`.
     /// * The memory referenced by the returned slice must not be accessed through any other pointer
     ///   (not derived from the return value) for the duration of lifetime `'a`.
     ///   Both read and write accesses are forbidden.
     /// * The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`.
     ///
-    /// [`ParallelVecParam::dangling()`]: ParallelVecParam::dangling
+    /// [`ParallelParam::dangling()`]: ParallelParam::dangling
     pub unsafe fn from_raw_parts(data: Param::Storage, len: usize) -> Self {
         Self {
             len,
@@ -146,7 +146,7 @@ impl<'a, Param: ParallelVecParam> ParallelSlice<'a, Param> {
 /// Unlike a struct of slices, this type only stores one length instead
 /// of duplicating the values across multiple slice fields.
 #[repr(C)]
-pub struct ParallelSliceMut<'a, Param: ParallelVecParam> {
+pub struct ParallelSliceMut<'a, Param: ParallelParam> {
     // Do not reorder these fields. These must be in the same order as
     // ParallelVec for Deref and DerefMut to work properly.
     len: usize,
@@ -154,7 +154,7 @@ pub struct ParallelSliceMut<'a, Param: ParallelVecParam> {
     _marker: PhantomData<&'a usize>,
 }
 
-impl<'a, Param: ParallelVecParam> ParallelSliceMut<'a, Param> {
+impl<'a, Param: ParallelParam> ParallelSliceMut<'a, Param> {
     /// Forms a slice from a pointer and a length.
     ///
     /// The `len` argument is the number of elements, not the number of bytes.
@@ -172,14 +172,14 @@ impl<'a, Param: ParallelVecParam> ParallelSliceMut<'a, Param> {
     ///       reason for this is that enum layout optimizations may rely on references
     ///       (including slices of any length) being aligned and non-null to distinguish
     ///       them from other data. You can obtain a pointer that is usable as `data`
-    ///       for zero-length slices using [`ParallelVecParam::dangling()`].
+    ///       for zero-length slices using [`ParallelParam::dangling()`].
     /// * `data` must point to `len` consecutive properly initialized values of type `Param`.
     /// * The memory referenced by the returned slice must not be accessed through any other pointer
     ///   (not derived from the return value) for the duration of lifetime `'a`.
     ///   Both read and write accesses are forbidden.
     /// * The total size `len * mem::size_of::<T>()` of the slice must be no larger than `isize::MAX`.
     ///
-    /// [`ParallelVecParam::dangling()`]: ParallelVecParam::dangling
+    /// [`ParallelParam::dangling()`]: ParallelParam::dangling
     pub unsafe fn from_raw_parts(data: Param::Storage, len: usize) -> Self {
         Self {
             len,
@@ -437,7 +437,7 @@ impl<'a, Param: ParallelVecParam> ParallelSliceMut<'a, Param> {
     }
 }
 
-impl<'a, Param: ParallelVecParam + Clone> ParallelSliceMut<'a, Param> {
+impl<'a, Param: ParallelParam + Clone> ParallelSliceMut<'a, Param> {
     /// Fills self with elements by cloning value.
     #[inline(always)]
     pub fn fill(&mut self, value: Param) {
@@ -445,7 +445,7 @@ impl<'a, Param: ParallelVecParam + Clone> ParallelSliceMut<'a, Param> {
     }
 }
 
-impl<'a, Param: ParallelVecParam> ParallelSliceMut<'a, Param> {
+impl<'a, Param: ParallelParam> ParallelSliceMut<'a, Param> {
     /// Fills self with elements returned by calling a closure repeatedly.
     ///
     /// This method uses a closure to create new values. If you’d rather [`Clone`]
@@ -473,7 +473,7 @@ pub trait ParallelSliceIndexMut<T> {
     fn index_mut(self, slice: &mut T) -> Self::Output;
 }
 
-impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for usize {
+impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for usize {
     type Output = Param::Ref<'s>;
     fn get(self, slice: &ParallelSlice<'s, Param>) -> Option<Self::Output> {
         if self > slice.len {
@@ -489,7 +489,7 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> f
     }
 }
 
-impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>> for usize {
+impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>> for usize {
     type Output = Param::Ref<'s>;
     fn get(self, slice: &ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
         if self > slice.len {
@@ -505,7 +505,7 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>
     }
 }
 
-impl<'s, Param: ParallelVecParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>> for usize {
+impl<'s, Param: ParallelParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>> for usize {
     type Output = Param::RefMut<'s>;
     fn get_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
         if self > slice.len {
@@ -521,7 +521,7 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Par
     }
 }
 
-impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for Range<usize> {
+impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for Range<usize> {
     type Output = ParallelSlice<'s, Param>;
     fn get(self, slice: &ParallelSlice<'s, Param>) -> Option<Self::Output> {
         if self.start > slice.len || self.end > slice.len {
@@ -547,7 +547,7 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> f
     }
 }
 
-impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>> for Range<usize> {
+impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>> for Range<usize> {
     type Output = ParallelSlice<'s, Param>;
     fn get(self, slice: &ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
         if self.start > slice.len || self.end > slice.len {
@@ -573,7 +573,7 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>
     }
 }
 
-impl<'s, Param: ParallelVecParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>>
+impl<'s, Param: ParallelParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>>
     for Range<usize>
 {
     type Output = ParallelSliceMut<'s, Param>;
@@ -601,7 +601,7 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Par
     }
 }
 
-impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>>
+impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSlice<'s, Param>>
     for RangeInclusive<usize>
 {
     type Output = ParallelSlice<'s, Param>;
@@ -622,7 +622,7 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>>
     }
 }
 
-impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>>
+impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>>
     for RangeInclusive<usize>
 {
     type Output = ParallelSlice<'s, Param>;
@@ -643,7 +643,7 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>
     }
 }
 
-impl<'s, Param: ParallelVecParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>>
+impl<'s, Param: ParallelParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>>
     for RangeInclusive<usize>
 {
     type Output = ParallelSliceMut<'s, Param>;
@@ -665,7 +665,7 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Par
     }
 }
 
-impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for RangeTo<usize> {
+impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for RangeTo<usize> {
     type Output = ParallelSlice<'s, Param>;
     fn get(self, slice: &ParallelSlice<'s, Param>) -> Option<Self::Output> {
         Range {
@@ -684,7 +684,7 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> f
     }
 }
 
-impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>>
+impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>>
     for RangeTo<usize>
 {
     type Output = ParallelSlice<'s, Param>;
@@ -705,7 +705,7 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>
     }
 }
 
-impl<'s, Param: ParallelVecParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>>
+impl<'s, Param: ParallelParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>>
     for RangeTo<usize>
 {
     type Output = ParallelSliceMut<'s, Param>;
@@ -726,7 +726,7 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Par
     }
 }
 
-impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>>
+impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSlice<'s, Param>>
     for RangeFrom<usize>
 {
     type Output = ParallelSlice<'s, Param>;
@@ -747,7 +747,7 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>>
     }
 }
 
-impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>>
+impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>>
     for RangeFrom<usize>
 {
     type Output = ParallelSlice<'s, Param>;
@@ -768,7 +768,7 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>
     }
 }
 
-impl<'s, Param: ParallelVecParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>>
+impl<'s, Param: ParallelParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>>
     for RangeFrom<usize>
 {
     type Output = ParallelSliceMut<'s, Param>;
@@ -789,7 +789,7 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Par
     }
 }
 
-impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for RangeFull {
+impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for RangeFull {
     type Output = ParallelSlice<'s, Param>;
     fn get(self, slice: &ParallelSlice<'s, Param>) -> Option<Self::Output> {
         Range {
@@ -808,7 +808,7 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> f
     }
 }
 
-impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>> for RangeFull {
+impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>> for RangeFull {
     type Output = ParallelSlice<'s, Param>;
     fn get(self, slice: &ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
         Range {
@@ -827,7 +827,7 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>
     }
 }
 
-impl<'s, Param: ParallelVecParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>> for RangeFull {
+impl<'s, Param: ParallelParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>> for RangeFull {
     type Output = ParallelSliceMut<'s, Param>;
     fn get_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
         Range {
