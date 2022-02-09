@@ -1,6 +1,7 @@
 use crate::iter::{IntoIter, Iter, IterMut};
 use crate::ParallelVecParam;
 use core::marker::PhantomData;
+use core::ops::{Deref, DerefMut};
 
 /// A contiguously growable heterogenous array type.
 ///
@@ -609,6 +610,29 @@ impl<Param: ParallelVecParam + Clone> Clone for ParallelVec<Param> {
 impl<Param: ParallelVecParam> Default for ParallelVec<Param> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<Param: ParallelVecParam> Deref for ParallelVec<Param> {
+    type Target = ParallelSliceMut<'static, Param>
+    fn deref(&self) -> &Self::Target {
+	// SAFE: Both ParallelVec and ParallelSliceMut have the same
+	// layout in memory due to #[repr(C)]
+	unsafe {
+		let ptr: *Self = self;
+		&*(ptr.cast::<Self::Target>())
+	}
+    }
+}
+
+impl<Param: ParallelVecParam> DerefMut for ParallelVec<Param> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+	// SAFE: Both ParallelVec and ParallelSliceMut have the same
+	// layout in memory due to #[repr(C)]
+	unsafe {
+		let ptr: *Self = self;
+		&mut *(ptr.cast::<Self::Target>())
+	}
     }
 }
 

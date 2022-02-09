@@ -73,12 +73,8 @@ impl<'a, Param: ParallelVecParam> ParallelSlice<'a, Param> {
     ///
     /// [`None`]: Option::None
     #[inline]
-    pub fn get<'b: 'a>(&'b self, index: usize) -> Option<Param::Ref<'b>> {
-        if self.len <= index {
-            None
-        } else {
-            unsafe { Some(self.get_unchecked(index)) }
-        }
+    pub fn get<'b: 'a, I: ParallelSliceIndex<Self>>(&'b self, index: I) -> Option<I::Output> {
+        index.get(self)
     }
 
     /// Returns the first element of the slice, or `None` if it is empty.
@@ -102,9 +98,11 @@ impl<'a, Param: ParallelVecParam> ParallelSlice<'a, Param> {
     /// # Panics
     /// This function will panic if `index` is >= `self.len`.
     #[inline]
-    pub fn index(&self, index: usize) -> Param::Ref<'_> {
-        assert_in_bounds(index, self.len);
-        unsafe { self.get_unchecked(index) }
+    pub fn index<I>(&self, index: I) -> I::Output
+    where
+        I: ParallelSliceIndex<Self>,
+    {
+        index.index(self)
     }
 
     /// Returns references to elements, without doing bounds checking.
@@ -211,12 +209,11 @@ impl<'a, Param: ParallelVecParam> ParallelSliceMut<'a, Param> {
     ///
     /// [`None`]: Option::None
     #[inline]
-    pub fn get<'b: 'a>(&'b self, index: usize) -> Option<Param::Ref<'b>> {
-        if self.len <= index {
-            None
-        } else {
-            unsafe { Some(self.get_unchecked(index)) }
-        }
+    pub fn get<'b: 'a, I>(&'b self, index: I) -> Option<I::Output>
+    where
+        I: ParallelSliceIndex<Self>,
+    {
+        index.get(self)
     }
 
     /// Returns a mutable reference to the element at `index`, if available, or
@@ -224,12 +221,11 @@ impl<'a, Param: ParallelVecParam> ParallelSliceMut<'a, Param> {
     ///
     /// [`None`]: Option::None
     #[inline]
-    pub fn get_mut(&mut self, index: usize) -> Option<Param::RefMut<'_>> {
-        if self.len <= index {
-            None
-        } else {
-            unsafe { Some(self.get_unchecked_mut(index)) }
-        }
+    pub fn get_mut<I>(&mut self, index: I) -> Option<I::Output>
+    where
+        I: ParallelSliceIndexMut<Self>,
+    {
+        index.get_mut(self)
     }
 
     /// Returns the first element of the slice, or `None` if it is empty.
@@ -240,7 +236,7 @@ impl<'a, Param: ParallelVecParam> ParallelSliceMut<'a, Param> {
 
     /// Returns the mutable pointer first element of the slice, or `None` if it is empty.
     #[inline(always)]
-    pub fn first_mut(&mut self) -> Option<Param::RefMut<'_>> {
+    pub fn first_mut<'b: 'a>(&'b mut self) -> Option<Param::RefMut<'b>> {
         self.get_mut(0)
     }
 
@@ -269,9 +265,11 @@ impl<'a, Param: ParallelVecParam> ParallelSliceMut<'a, Param> {
     /// # Panics
     /// This function will panic if `index` is >= `self.len`.
     #[inline]
-    pub fn index(&self, index: usize) -> Param::Ref<'_> {
-        assert_in_bounds(index, self.len);
-        unsafe { self.get_unchecked(index) }
+    pub fn index<I>(&self, index: I) -> I::Output
+    where
+        I: ParallelSliceIndex<Self>,
+    {
+        index.index(self)
     }
 
     /// Gets a mutable reference to the elements at `index`.
@@ -279,9 +277,11 @@ impl<'a, Param: ParallelVecParam> ParallelSliceMut<'a, Param> {
     /// # Panics
     /// This function will panic if `index` is >= `self.len`.
     #[inline]
-    pub fn index_mut(&mut self, index: usize) -> Param::RefMut<'_> {
-        assert_in_bounds(index, self.len);
-        unsafe { self.get_unchecked_mut(index) }
+    pub fn index_mut<I>(&mut self, index: I) -> I::Output
+    where
+        I: ParallelSliceIndexMut<Self>,
+    {
+        index.index_mut(self)
     }
 
     /// Returns references to elements, without doing bounds checking.
@@ -469,19 +469,19 @@ impl<'a, Param: ParallelVecParam> ParallelSliceMut<'a, Param> {
 }
 
 pub trait ParallelSliceIndex<T> {
-    type Mut;
     type Output;
-    type OutputMut;
     fn get(self, slice: &T) -> Option<Self::Output>;
-    fn get_mut(self, slice: &mut Self::Mut) -> Option<Self::OutputMut>;
     fn index(self, slice: &T) -> Self::Output;
-    fn index_mut(self, slice: &mut Self::Mut) -> Self::OutputMut;
+}
+
+pub trait ParallelSliceIndexMut<T> {
+    type Output;
+    fn get_mut(self, slice: &mut T) -> Option<Self::Output>;
+    fn index_mut(self, slice: &mut T) -> Self::Output;
 }
 
 impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for usize {
-    type Mut = ParallelSliceMut<'s, Param>;
     type Output = Param::Ref<'s>;
-    type OutputMut = Param::RefMut<'s>;
     fn get(self, slice: &ParallelSlice<'s, Param>) -> Option<Self::Output> {
         if self > slice.len {
             return None;
@@ -490,7 +490,31 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> f
         unsafe { Some(Param::as_ref(Param::ptr_at(slice.storage, self))) }
     }
 
-    fn get_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Option<Self::OutputMut> {
+    fn index(self, slice: &ParallelSlice<'s, Param>) -> Self::Output {
+        assert_in_bounds(self, slice.len);
+        unsafe { Param::as_ref(Param::ptr_at(slice.storage, self)) }
+    }
+}
+
+impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>> for usize {
+    type Output = Param::Ref<'s>;
+    fn get(self, slice: &ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
+        if self > slice.len {
+            return None;
+        }
+
+        unsafe { Some(Param::as_ref(Param::ptr_at(slice.storage, self))) }
+    }
+
+    fn index(self, slice: &ParallelSliceMut<'s, Param>) -> Self::Output {
+        assert_in_bounds(self, slice.len);
+        unsafe { Param::as_ref(Param::ptr_at(slice.storage, self)) }
+    }
+}
+
+impl<'s, Param: ParallelVecParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>> for usize {
+    type Output = Param::RefMut<'s>;
+    fn get_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
         if self > slice.len {
             return None;
         }
@@ -498,21 +522,14 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> f
         unsafe { Some(Param::as_mut(Param::ptr_at(slice.storage, self))) }
     }
 
-    fn index(self, slice: &ParallelSlice<'s, Param>) -> Self::Output {
-        assert_in_bounds(self, slice.len);
-        unsafe { Param::as_ref(Param::ptr_at(slice.storage, self)) }
-    }
-
-    fn index_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Self::OutputMut {
+    fn index_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Self::Output {
         assert_in_bounds(self, slice.len);
         unsafe { Param::as_mut(Param::ptr_at(slice.storage, self)) }
     }
 }
 
 impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for Range<usize> {
-    type Mut = ParallelSliceMut<'s, Param>;
     type Output = ParallelSlice<'s, Param>;
-    type OutputMut = ParallelSliceMut<'s, Param>;
     fn get(self, slice: &ParallelSlice<'s, Param>) -> Option<Self::Output> {
         if self.start > slice.len || self.end > slice.len {
             return None;
@@ -527,7 +544,47 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> f
         }
     }
 
-    fn get_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Option<Self::OutputMut> {
+    fn index(self, slice: &ParallelSlice<'s, Param>) -> Self::Output {
+        assert_in_bounds(self.start, slice.len);
+        assert_in_bounds(self.end, slice.len);
+        unsafe {
+            let ptr = Param::ptr_at(slice.storage, self.start);
+            ParallelSlice::from_raw_parts(Param::as_storage(ptr), self.end - self.start)
+        }
+    }
+}
+
+impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>> for Range<usize> {
+    type Output = ParallelSlice<'s, Param>;
+    fn get(self, slice: &ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
+        if self.start > slice.len || self.end > slice.len {
+            return None;
+        }
+
+        unsafe {
+            let ptr = Param::ptr_at(slice.storage, self.start);
+            Some(ParallelSlice::from_raw_parts(
+                Param::as_storage(ptr),
+                self.end - self.start,
+            ))
+        }
+    }
+
+    fn index(self, slice: &ParallelSliceMut<'s, Param>) -> Self::Output {
+        assert_in_bounds(self.start, slice.len);
+        assert_in_bounds(self.end, slice.len);
+        unsafe {
+            let ptr = Param::ptr_at(slice.storage, self.start);
+            ParallelSlice::from_raw_parts(Param::as_storage(ptr), self.end - self.start)
+        }
+    }
+}
+
+impl<'s, Param: ParallelVecParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>>
+    for Range<usize>
+{
+    type Output = ParallelSliceMut<'s, Param>;
+    fn get_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
         if self.start > slice.len || self.end > slice.len {
             return None;
         }
@@ -541,16 +598,7 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> f
         }
     }
 
-    fn index(self, slice: &ParallelSlice<'s, Param>) -> Self::Output {
-        assert_in_bounds(self.start, slice.len);
-        assert_in_bounds(self.end, slice.len);
-        unsafe {
-            let ptr = Param::ptr_at(slice.storage, self.start);
-            ParallelSlice::from_raw_parts(Param::as_storage(ptr), self.end - self.start)
-        }
-    }
-
-    fn index_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Self::OutputMut {
+    fn index_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Self::Output {
         assert_in_bounds(self.start, slice.len);
         assert_in_bounds(self.end, slice.len);
         unsafe {
@@ -563,24 +611,13 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> f
 impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>>
     for RangeInclusive<usize>
 {
-    type Mut = ParallelSliceMut<'s, Param>;
     type Output = ParallelSlice<'s, Param>;
-    type OutputMut = ParallelSliceMut<'s, Param>;
     fn get(self, slice: &ParallelSlice<'s, Param>) -> Option<Self::Output> {
         let range = Range {
             start: *self.start(),
             end: *self.end() + 1,
         };
         range.get(slice)
-    }
-
-    fn get_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Option<Self::OutputMut> {
-        let range = Range {
-            start: *self.start(),
-            end: *self.end() + 1,
-        };
-
-        range.get_mut(slice)
     }
 
     fn index(self, slice: &ParallelSlice<'s, Param>) -> Self::Output {
@@ -590,8 +627,43 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>>
         };
         range.index(slice)
     }
+}
 
-    fn index_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Self::OutputMut {
+impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>>
+    for RangeInclusive<usize>
+{
+    type Output = ParallelSlice<'s, Param>;
+    fn get(self, slice: &ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
+        let range = Range {
+            start: *self.start(),
+            end: *self.end() + 1,
+        };
+        range.get(slice)
+    }
+
+    fn index(self, slice: &ParallelSliceMut<'s, Param>) -> Self::Output {
+        let range = Range {
+            start: *self.start(),
+            end: *self.end() + 1,
+        };
+        range.index(slice)
+    }
+}
+
+impl<'s, Param: ParallelVecParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>>
+    for RangeInclusive<usize>
+{
+    type Output = ParallelSliceMut<'s, Param>;
+    fn get_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
+        let range = Range {
+            start: *self.start(),
+            end: *self.end() + 1,
+        };
+
+        range.get_mut(slice)
+    }
+
+    fn index_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Self::Output {
         let range = Range {
             start: *self.start(),
             end: *self.end() + 1,
@@ -601,23 +673,13 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>>
 }
 
 impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for RangeTo<usize> {
-    type Mut = ParallelSliceMut<'s, Param>;
     type Output = ParallelSlice<'s, Param>;
-    type OutputMut = ParallelSliceMut<'s, Param>;
     fn get(self, slice: &ParallelSlice<'s, Param>) -> Option<Self::Output> {
         Range {
             start: 0,
             end: self.end,
         }
         .get(slice)
-    }
-
-    fn get_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Option<Self::OutputMut> {
-        Range {
-            start: 0,
-            end: self.end,
-        }
-        .get_mut(slice)
     }
 
     fn index(self, slice: &ParallelSlice<'s, Param>) -> Self::Output {
@@ -627,8 +689,42 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> f
         }
         .index(slice)
     }
+}
 
-    fn index_mut<'a>(self, slice: &mut ParallelSliceMut<'s, Param>) -> Self::OutputMut {
+impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>>
+    for RangeTo<usize>
+{
+    type Output = ParallelSlice<'s, Param>;
+    fn get(self, slice: &ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
+        Range {
+            start: 0,
+            end: self.end,
+        }
+        .get(slice)
+    }
+
+    fn index(self, slice: &ParallelSliceMut<'s, Param>) -> Self::Output {
+        Range {
+            start: 0,
+            end: self.end,
+        }
+        .index(slice)
+    }
+}
+
+impl<'s, Param: ParallelVecParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>>
+    for RangeTo<usize>
+{
+    type Output = ParallelSliceMut<'s, Param>;
+    fn get_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
+        Range {
+            start: 0,
+            end: self.end,
+        }
+        .get_mut(slice)
+    }
+
+    fn index_mut<'a>(self, slice: &mut ParallelSliceMut<'s, Param>) -> Self::Output {
         Range {
             start: 0,
             end: self.end,
@@ -640,23 +736,13 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> f
 impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>>
     for RangeFrom<usize>
 {
-    type Mut = ParallelSliceMut<'s, Param>;
     type Output = ParallelSlice<'s, Param>;
-    type OutputMut = ParallelSliceMut<'s, Param>;
     fn get(self, slice: &ParallelSlice<'s, Param>) -> Option<Self::Output> {
         Range {
             start: self.start,
             end: slice.len,
         }
         .get(slice)
-    }
-
-    fn get_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Option<Self::OutputMut> {
-        Range {
-            start: self.start,
-            end: slice.len,
-        }
-        .get_mut(slice)
     }
 
     fn index(self, slice: &ParallelSlice<'s, Param>) -> Self::Output {
@@ -666,8 +752,42 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>>
         }
         .index(slice)
     }
+}
 
-    fn index_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Self::OutputMut {
+impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>>
+    for RangeFrom<usize>
+{
+    type Output = ParallelSlice<'s, Param>;
+    fn get(self, slice: &ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
+        Range {
+            start: self.start,
+            end: slice.len,
+        }
+        .get(slice)
+    }
+
+    fn index(self, slice: &ParallelSliceMut<'s, Param>) -> Self::Output {
+        Range {
+            start: self.start,
+            end: slice.len,
+        }
+        .index(slice)
+    }
+}
+
+impl<'s, Param: ParallelVecParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>>
+    for RangeFrom<usize>
+{
+    type Output = ParallelSliceMut<'s, Param>;
+    fn get_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
+        Range {
+            start: self.start,
+            end: slice.len,
+        }
+        .get_mut(slice)
+    }
+
+    fn index_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Self::Output {
         Range {
             start: self.start,
             end: slice.len,
@@ -677,23 +797,13 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>>
 }
 
 impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for RangeFull {
-    type Mut = ParallelSliceMut<'s, Param>;
     type Output = ParallelSlice<'s, Param>;
-    type OutputMut = ParallelSliceMut<'s, Param>;
     fn get(self, slice: &ParallelSlice<'s, Param>) -> Option<Self::Output> {
         Range {
             start: 0,
             end: slice.len,
         }
         .get(slice)
-    }
-
-    fn get_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Option<Self::OutputMut> {
-        Range {
-            start: 0,
-            end: slice.len,
-        }
-        .get_mut(slice)
     }
 
     fn index(self, slice: &ParallelSlice<'s, Param>) -> Self::Output {
@@ -703,8 +813,38 @@ impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSlice<'s, Param>> f
         }
         .index(slice)
     }
+}
 
-    fn index_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Self::OutputMut {
+impl<'s, Param: ParallelVecParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>> for RangeFull {
+    type Output = ParallelSlice<'s, Param>;
+    fn get(self, slice: &ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
+        Range {
+            start: 0,
+            end: slice.len,
+        }
+        .get(slice)
+    }
+
+    fn index(self, slice: &ParallelSliceMut<'s, Param>) -> Self::Output {
+        Range {
+            start: 0,
+            end: slice.len,
+        }
+        .index(slice)
+    }
+}
+
+impl<'s, Param: ParallelVecParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>> for RangeFull {
+    type Output = ParallelSliceMut<'s, Param>;
+    fn get_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
+        Range {
+            start: 0,
+            end: slice.len,
+        }
+        .get_mut(slice)
+    }
+
+    fn index_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Self::Output {
         Range {
             start: 0,
             end: slice.len,
