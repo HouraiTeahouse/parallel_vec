@@ -50,3 +50,7 @@ This crate requires use of GATs and therefore requires the following nightly fea
 By default, this crate requires the standard library. Disabling the default features 
 enables this crate to compile in `#![no_std]` environments. There must be a set global
 allocator and heap support for this crate to work.
+
+## `serde` Support 
+`ParallelVec` can be serialized if it's parameters can be serialized. This is disabled by
+default. Use the `serde` feature to enable support for serialization and deserialization.
