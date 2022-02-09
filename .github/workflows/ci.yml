@@ -21,7 +21,7 @@ jobs:
         with:
           toolchain: ${{ matrix.toolchain }}
           profile: minimal
-          components: rustfmt, clippy
+          components: rustfmt, clippy, miri
           override: true
 
       - name: Setup cache
@@ -57,7 +57,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         if: matrix.std == 'std'
         with:
-          command: test
+          command: miri test
         env:
           CARGO_INCREMENTAL: 0
           RUSTFLAGS: "-C debuginfo=0"
