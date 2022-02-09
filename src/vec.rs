@@ -120,6 +120,7 @@ impl<Param: ParallelParam> ParallelVec<Param> {
             let src = Param::as_ptr(other.storage);
             let dst = Param::ptr_at(self.storage, self.len);
             Param::copy_to_nonoverlapping(src, dst, other.len);
+            self.len += other.len;
             // No need to drop from the other vec, data has been moved to
             // the current one. Just set the length here.
             other.len = 0;
@@ -145,7 +146,7 @@ impl<Param: ParallelParam> ParallelVec<Param> {
             None
         } else {
             unsafe {
-                let ptr = Param::ptr_at(self.storage, self.len);
+                let ptr = Param::ptr_at(self.storage, self.len - 1);
                 let value = Param::read(ptr);
                 self.len -= 1;
                 Some(value)
@@ -258,9 +259,11 @@ impl<Param: ParallelParam + Copy> ParallelVec<Param> {
 
 impl<Param: ParallelParam> Drop for ParallelVec<Param> {
     fn drop(&mut self) {
+        let end = self.len;
+        // Set len to 0 first in case one of the Drop impls panics
         self.len = 0;
         unsafe {
-            self.drop_range(0, self.len);
+            self.drop_range(0, end);
             Param::dealloc(&mut self.storage, self.capacity);
         }
     }
@@ -350,6 +353,8 @@ impl<Param: ParallelParam> DerefMut for ParallelVec<Param> {
 mod tests {
     use super::ParallelVec;
 
+    use std::rc::Rc;
+
     #[test]
     fn layouts_do_not_overlap() {
         // Trying with both (small, large) and (large, small) to ensure nothing bleeds into anything else.
@@ -388,7 +393,51 @@ mod tests {
     }
 
     #[test]
-    fn clones() {
+    fn test_new() {
+        let src: ParallelVec<(i32, i32, u64)> = ParallelVec::new();
+        assert_eq!(src.len(), 0);
+        assert_eq!(src.capacity(), 0);
+        assert!(src.is_empty());
+    }
+
+    #[test]
+    fn test_default() {
+        let src: ParallelVec<(i32, i32, u64)> = Default::default();
+        assert_eq!(src.len(), 0);
+        assert_eq!(src.capacity(), 0);
+        assert!(src.is_empty());
+    }
+
+    #[test]
+    fn test_with_capacity() {
+        let src: ParallelVec<(i32, i32, u64)> = ParallelVec::with_capacity(1000);
+        assert_eq!(src.len(), 0);
+        assert!(src.capacity() >= 1000);
+        assert!(src.is_empty());
+    }
+
+    #[test]
+    fn test_reserve() {
+        let mut src = ParallelVec::new();
+        src.push((0, 0, 0, 0));
+        assert_eq!(src.len(), 1);
+        assert!(src.capacity() >= 1);
+        src.reserve(10);
+        assert_eq!(src.len(), 1);
+        assert!(src.capacity() >= 10);
+        src.reserve(100);
+        assert_eq!(src.len(), 1);
+        assert!(src.capacity() >= 100);
+        src.reserve(1000);
+        assert_eq!(src.len(), 1);
+        assert!(src.capacity() >= 1000);
+        src.reserve(100000);
+        assert_eq!(src.len(), 1);
+        assert!(src.capacity() >= 10000);
+    }
+
+    #[test]
+    fn test_clone() {
         let mut src = ParallelVec::new();
         src.push((1.0, 2.0));
         src.push((3.0, 4.0));
@@ -400,7 +449,43 @@ mod tests {
     }
 
     #[test]
-    fn insert() {
+    fn test_push() {
+        let mut src = ParallelVec::new();
+        src.push((1, 2));
+        assert_eq!(src.index(0), (&1, &2));
+        assert_eq!(src.len(), 1);
+    }
+
+    #[test]
+    fn test_pop() {
+        let mut src = ParallelVec::new();
+        src.push((1, 2));
+        src.push((3, 4));
+        src.push((5, 6));
+        src.push((7, 8));
+        assert_eq!(src.len(), 4);
+        let value = src.pop();
+        assert_eq!(value, Some((7, 8)));
+        assert_eq!(src.len(), 3);
+        let value = src.pop();
+        assert_eq!(value, Some((5, 6)));
+        assert_eq!(src.len(), 2);
+        let value = src.pop();
+        assert_eq!(value, Some((3, 4)));
+        assert_eq!(src.len(), 1);
+        let value = src.pop();
+        assert_eq!(value, Some((1, 2)));
+        assert_eq!(src.len(), 0);
+        let value = src.pop();
+        assert_eq!(value, None);
+        assert_eq!(src.len(), 0);
+        let value = src.pop();
+        assert_eq!(value, None);
+        assert_eq!(src.len(), 0);
+    }
+
+    #[test]
+    fn test_insert() {
         let mut src = ParallelVec::new();
         src.insert(0, (1, 2));
         src.insert(0, (3, 4));
@@ -411,12 +496,484 @@ mod tests {
     }
 
     #[test]
-    fn remove() {
+    #[should_panic]
+    fn test_insert_panics() {
+        let mut src = ParallelVec::new();
+        src.insert(0, (1, 2));
+        src.insert(0, (3, 4));
+        src.insert(1, (4, 5));
+        src.insert(20, (4, 5));
+    }
+
+    #[test]
+    fn test_remove() {
         let mut src = ParallelVec::new();
         src.push((1, 2));
         src.push((3, 4));
+        assert_eq!(src.remove(1), Some((3, 4)));
         assert_eq!(src.remove(0), Some((1, 2)));
-        assert_eq!(src.remove(0), Some((3, 4)));
         assert_eq!(src.len(), 0);
+        assert_eq!(src.remove(5), None);
+    }
+
+    #[test]
+    fn test_iter() {
+        let mut src = ParallelVec::new();
+        src.push((1, 2));
+        src.push((3, 4));
+        src.push((5, 6));
+        src.push((7, 8));
+        let mut iter = src.iter();
+        assert_eq!(iter.next(), Some((&1, &2)));
+        assert_eq!(iter.next(), Some((&3, &4)));
+        assert_eq!(iter.next(), Some((&5, &6)));
+        assert_eq!(iter.next(), Some((&7, &8)));
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next(), None);
+        // Shouldn't have removed any of them
+        assert_eq!(src.len(), 4);
+    }
+
+    #[test]
+    fn test_iter_mut() {
+        let mut src = ParallelVec::new();
+        src.push((1, 2));
+        src.push((3, 4));
+        src.push((5, 6));
+        src.push((7, 8));
+        let mut iter = src.iter_mut();
+        assert_eq!(iter.next(), Some((&mut 1, &mut 2)));
+        assert_eq!(iter.next(), Some((&mut 3, &mut 4)));
+        assert_eq!(iter.next(), Some((&mut 5, &mut 6)));
+        assert_eq!(iter.next(), Some((&mut 7, &mut 8)));
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next(), None);
+        // Shouldn't have removed any of them
+        assert_eq!(src.len(), 4);
+    }
+
+    #[test]
+    fn test_shrink_to() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        src.reserve(1000);
+        assert_eq!(src.len(), 4);
+        assert!(src.capacity() >= 1000);
+        src.shrink_to(200);
+        assert_eq!(src.len(), 4);
+        assert!(src.capacity() <= 200);
+        src.shrink_to(100);
+        assert_eq!(src.len(), 4);
+        assert!(src.capacity() <= 100);
+        src.shrink_to(10);
+        assert_eq!(src.len(), 4);
+        assert!(src.capacity() <= 10);
+        src.shrink_to(1);
+        assert_eq!(src.len(), 4);
+        assert!(src.capacity() >= 4);
+        let (a, b) = src.as_slices();
+        assert_eq!(a, &[1, 3, 5, 7]);
+        assert_eq!(b, &[2, 4, 6, 8]);
+    }
+
+    #[test]
+    fn test_shrink_to_fit() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        src.reserve(1000);
+        assert_eq!(src.len(), 4);
+        assert!(src.capacity() >= 1000);
+        src.shrink_to_fit();
+        assert_eq!(src.len(), 4);
+        assert!(src.capacity() <= src.len());
+        let (a, b) = src.as_slices();
+        assert_eq!(a, &[1, 3, 5, 7]);
+        assert_eq!(b, &[2, 4, 6, 8]);
+    }
+
+    #[test]
+    fn test_truncate() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        {
+            let (a, b) = src.as_slices();
+            assert_eq!(a, &[1, 3, 5, 7]);
+            assert_eq!(b, &[2, 4, 6, 8]);
+        }
+        src.truncate(2);
+        {
+            let (a, b) = src.as_slices();
+            assert_eq!(a, &[1, 3]);
+            assert_eq!(b, &[2, 4]);
+            assert_eq!(src.len(), 2);
+            assert!(src.capacity() >= 4);
+        }
+    }
+
+    #[test]
+    fn test_truncate_drops() {
+        let rc = Rc::new(0);
+        let mut src = ParallelVec::new();
+        src.extend(vec![
+            (rc.clone(), rc.clone()),
+            (rc.clone(), rc.clone()),
+            (rc.clone(), rc.clone()),
+            (rc.clone(), rc.clone()),
+        ]);
+        assert_eq!(Rc::strong_count(&rc), 9);
+        src.truncate(1);
+        assert_eq!(Rc::strong_count(&rc), 3);
+    }
+
+    #[test]
+    fn test_reverse() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        {
+            let (a, b) = src.as_slices();
+            assert_eq!(a, &[1, 3, 5, 7]);
+            assert_eq!(b, &[2, 4, 6, 8]);
+        }
+        src.reverse();
+        {
+            let (a, b) = src.as_slices();
+            assert_eq!(a, &[7, 5, 3, 1]);
+            assert_eq!(b, &[8, 6, 4, 2]);
+        }
+    }
+
+    #[test]
+    fn test_clear() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        src.clear();
+        assert_eq!(src.len(), 0);
+        assert!(src.capacity() > 0);
+        let (a, b) = src.as_slices();
+        assert_eq!(a, &[]);
+        assert_eq!(b, &[]);
+    }
+
+    #[test]
+    fn test_repeat() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        let repeated = src.repeat(3);
+        let (a, b) = repeated.as_slices();
+        assert_eq!(a, &[1, 3, 5, 7, 1, 3, 5, 7, 1, 3, 5, 7]);
+        assert_eq!(b, &[2, 4, 6, 8, 2, 4, 6, 8, 2, 4, 6, 8]);
+        let (a, b) = src.as_slices();
+        assert_eq!(src.len(), 4);
+        assert_eq!(a, &[1, 3, 5, 7]);
+        assert_eq!(b, &[2, 4, 6, 8]);
+        assert_eq!(repeated.len(), 12);
+    }
+
+    #[test]
+    fn test_extend() {
+        let mut src = ParallelVec::new();
+        src.push((0, 0));
+        src.push((-1, -1));
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        src.push((10, 10));
+        src.push((11, 11));
+        let (a, b) = src.as_slices();
+        assert_eq!(a, &[0, -1, 1, 3, 5, 7, 10, 11]);
+        assert_eq!(b, &[0, -1, 2, 4, 6, 8, 10, 11]);
+        assert_eq!(src.len(), 8);
+    }
+
+    #[test]
+    fn test_swap_remove() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        src.swap_remove(1);
+        let (a, b) = src.as_slices();
+        assert_eq!(a, &[1, 7, 5]);
+        assert_eq!(b, &[2, 8, 6]);
+        assert_eq!(src.len(), 3);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_swap_remove_panics() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        src.swap_remove(12);
+    }
+
+    #[test]
+    fn test_swap() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        src.swap(1, 2);
+        let (a, b) = src.as_slices();
+        assert_eq!(a, &[1, 5, 3, 7]);
+        assert_eq!(b, &[2, 6, 4, 8]);
+        assert_eq!(src.len(), 4);
+        src.swap(0, 3);
+        let (a, b) = src.as_slices();
+        assert_eq!(a, &[7, 5, 3, 1]);
+        assert_eq!(b, &[8, 6, 4, 2]);
+        assert_eq!(src.len(), 4);
+        src.swap(3, 0);
+        let (a, b) = src.as_slices();
+        assert_eq!(a, &[1, 5, 3, 7]);
+        assert_eq!(b, &[2, 6, 4, 8]);
+        assert_eq!(src.len(), 4);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_swap_panics() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        src.swap(20, 2);
+    }
+
+    #[test]
+    fn test_swap_with() {
+        let mut src_a = ParallelVec::new();
+        src_a.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        let mut src_b = ParallelVec::new();
+        src_b.extend(vec![(9, 9), (2, 2), (4, 4), (7, 7)]);
+        let (a, b) = src_a.as_slices();
+        assert_eq!(a, &[1, 3, 5, 7]);
+        assert_eq!(b, &[2, 4, 6, 8]);
+        assert_eq!(src_a.len(), 4);
+        let (a, b) = src_b.as_slices();
+        assert_eq!(a, &[9, 2, 4, 7]);
+        assert_eq!(b, &[9, 2, 4, 7]);
+        assert_eq!(src_b.len(), 4);
+        src_a.swap_with(&mut src_b);
+        let (a, b) = src_a.as_slices();
+        assert_eq!(a, &[9, 2, 4, 7]);
+        assert_eq!(b, &[9, 2, 4, 7]);
+        assert_eq!(src_a.len(), 4);
+        let (a, b) = src_b.as_slices();
+        assert_eq!(a, &[1, 3, 5, 7]);
+        assert_eq!(b, &[2, 4, 6, 8]);
+        assert_eq!(src_b.len(), 4);
+    }
+
+    #[test]
+    fn test_drop() {
+        let rc = Rc::new(0);
+        let mut src_a = ParallelVec::new();
+        src_a.extend(vec![
+            (rc.clone(), rc.clone()),
+            (rc.clone(), rc.clone()),
+            (rc.clone(), rc.clone()),
+            (rc.clone(), rc.clone()),
+        ]);
+        assert_eq!(Rc::strong_count(&rc), 9);
+        core::mem::drop(src_a);
+        assert_eq!(Rc::strong_count(&rc), 1);
+    }
+
+    #[test]
+    fn test_append() {
+        let mut src_a = ParallelVec::new();
+        src_a.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        let mut src_b = ParallelVec::new();
+        src_b.extend(vec![(9, 9), (2, 2), (4, 4), (7, 7)]);
+        src_a.append(&mut src_b);
+        let (a, b) = src_a.as_slices();
+        assert_eq!(a, &[1, 3, 5, 7, 9, 2, 4, 7]);
+        assert_eq!(b, &[2, 4, 6, 8, 9, 2, 4, 7]);
+        assert_eq!(src_a.len(), 8);
+        let (a, b) = src_b.as_slices();
+        assert_eq!(a, &[]);
+        assert_eq!(b, &[]);
+        assert_eq!(src_b.len(), 0);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_swap_with_panics() {
+        let mut src_a = ParallelVec::new();
+        src_a.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        let mut src_b = ParallelVec::new();
+        src_b.extend(vec![(9, 9), (2, 2), (7, 7)]);
+        src_a.swap_with(&mut src_b);
+    }
+
+    #[test]
+    fn test_set() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        src.set(2, (0, 0));
+        let (a, b) = src.as_slices();
+        assert_eq!(a, &[1, 3, 0, 7]);
+        assert_eq!(b, &[2, 4, 0, 8]);
+        assert_eq!(src.len(), 4);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_set_panics() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        src.set(10, (0, 0));
+    }
+
+    #[test]
+    fn test_get_single() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        assert_eq!(src.get(0), Some((&1, &2)));
+        assert_eq!(src.get(1), Some((&3, &4)));
+        assert_eq!(src.get(2), Some((&5, &6)));
+        assert_eq!(src.get(3), Some((&7, &8)));
+        assert_eq!(src.get(4), None);
+        assert_eq!(src.get(5), None);
+    }
+
+    #[test]
+    fn test_get_mut_single() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        assert_eq!(src.get_mut(0), Some((&mut 1, &mut 2)));
+        assert_eq!(src.get_mut(1), Some((&mut 3, &mut 4)));
+        assert_eq!(src.get_mut(2), Some((&mut 5, &mut 6)));
+        assert_eq!(src.get_mut(3), Some((&mut 7, &mut 8)));
+        assert_eq!(src.get_mut(4), None);
+        assert_eq!(src.get_mut(5), None);
+    }
+
+    #[test]
+    fn test_first() {
+        let mut src = ParallelVec::new();
+        assert_eq!(src.first(), None);
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        assert_eq!(src.first(), Some((&1, &2)));
+    }
+
+    #[test]
+    fn test_first_mut() {
+        let mut src = ParallelVec::new();
+        assert_eq!(src.first_mut(), None);
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        assert_eq!(src.first_mut(), Some((&mut 1, &mut 2)));
+    }
+
+    #[test]
+    fn test_last() {
+        let mut src = ParallelVec::new();
+        assert_eq!(src.last(), None);
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        assert_eq!(src.last(), Some((&7, &8)));
+    }
+
+    #[test]
+    fn test_last_mut() {
+        let mut src = ParallelVec::new();
+        assert_eq!(src.last_mut(), None);
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        assert_eq!(src.last_mut(), Some((&mut 7, &mut 8)));
+    }
+
+    #[test]
+    fn test_get_slice() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        let slice = src.get(1..3);
+        assert!(slice.is_some());
+        let slice = slice.unwrap();
+        assert_eq!(slice.len(), 2);
+        let (a, b) = slice.as_slices();
+        assert_eq!(a, &[3, 5]);
+        assert_eq!(b, &[4, 6]);
+        let slice = src.get(1..5);
+        assert!(slice.is_none());
+    }
+
+    #[test]
+    fn test_get_mut_slice() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        let slice = src.get_mut(1..3);
+        assert!(slice.is_some());
+        let mut slice = slice.unwrap();
+        assert_eq!(slice.len(), 2);
+        let (a, b) = slice.as_slices_mut();
+        assert_eq!(a, &mut [3, 5]);
+        assert_eq!(b, &mut [4, 6]);
+        let slice = src.get(1..5);
+        assert!(slice.is_none());
+    }
+
+    #[test]
+    fn test_index_single() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        assert_eq!(src.index(0), (&1, &2));
+        assert_eq!(src.index(1), (&3, &4));
+        assert_eq!(src.index(2), (&5, &6));
+        assert_eq!(src.index(3), (&7, &8));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_index_single_panics() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        src.index(4);
+    }
+
+    #[test]
+    fn test_index_mut_single() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        assert_eq!(src.index_mut(0), (&mut 1, &mut 2));
+        assert_eq!(src.index_mut(1), (&mut 3, &mut 4));
+        assert_eq!(src.index_mut(2), (&mut 5, &mut 6));
+        assert_eq!(src.index_mut(3), (&mut 7, &mut 8));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_index_mut_panics() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        src.index_mut(4);
+    }
+
+    #[test]
+    fn test_index_slice() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        let slice = src.index(1..3);
+        let (a, b) = slice.as_slices();
+        assert_eq!(a, &[3, 5]);
+        assert_eq!(b, &[4, 6]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_index_slice_panics() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        src.index(1..9);
+    }
+
+    #[test]
+    fn test_index_mut_slice() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        let slice = src.index_mut(1..3);
+        let (a, b) = slice.as_slices();
+        assert_eq!(a, &mut [3, 5]);
+        assert_eq!(b, &mut [4, 6]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_index_mut_slice_panics() {
+        let mut src = ParallelVec::new();
+        src.extend(vec![(1, 2), (3, 4), (5, 6), (7, 8)]);
+        src.index_mut(1..9);
     }
 }

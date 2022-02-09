@@ -384,9 +384,9 @@ macro_rules! impl_parallel_vec_param {
 
             #[inline(always)]
             unsafe fn drop(ptr: Self::Ptr) {
-                let ($t1, $($ts),*) = Self::read(ptr);
-                core::mem::drop($t1);
-                $(core::mem::drop($ts);)*
+                let ($t1, $($ts),*) = ptr;
+                core::ptr::drop_in_place($t1);
+                $(core::ptr::drop_in_place($ts);)*
             }
 
             #[cfg(feature="std")]

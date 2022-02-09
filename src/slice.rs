@@ -230,7 +230,7 @@ impl<'a, Param: ParallelParam> ParallelSliceMut<'a, Param> {
 
     /// Returns the mutable pointer first element of the slice, or `None` if it is empty.
     #[inline(always)]
-    pub fn first_mut<'b: 'a>(&'b mut self) -> Option<Param::RefMut<'b>> {
+    pub fn first_mut(&mut self) -> Option<Param::RefMut<'a>> {
         self.get_mut(0)
     }
 
@@ -257,7 +257,7 @@ impl<'a, Param: ParallelParam> ParallelSliceMut<'a, Param> {
     /// Gets a immutable reference to the elements at `index`.
     ///
     /// # Panics
-    /// This function will panic if `index` is >= `self.len`.
+    /// This function will panic if `index >= self.len`.
     #[inline]
     pub fn index<I>(&self, index: I) -> I::Output
     where
@@ -269,13 +269,37 @@ impl<'a, Param: ParallelParam> ParallelSliceMut<'a, Param> {
     /// Gets a mutable reference to the elements at `index`.
     ///
     /// # Panics
-    /// This function will panic if `index` is >= `self.len`.
+    /// This function will panic if `index >= self.len`.
     #[inline]
     pub fn index_mut<I>(&mut self, index: I) -> I::Output
     where
         I: ParallelSliceIndexMut<Self>,
     {
         index.index_mut(self)
+    }
+
+    /// Sets a value at an valid index in the slice.
+    ///
+    /// # Panics
+    /// This function will panic if `index >= self.len`.
+    #[inline]
+    pub fn set(&mut self, index: usize, value: Param) {
+        assert_in_bounds(index, self.len);
+        unsafe {
+            self.set_unchecked(index, value);
+        }
+    }
+
+    /// Sets a value at an valid index in the slice without
+    /// checking bounds.
+    ///
+    /// # Safety
+    /// The set is only safe if `index >= self.len`.
+    #[inline]
+    pub unsafe fn set_unchecked(&mut self, index: usize, value: Param) {
+        let ptr = Param::ptr_at(self.storage, index);
+        Param::drop(ptr);
+        Param::write(ptr, value);
     }
 
     /// Returns references to elements, without doing bounds checking.
@@ -492,7 +516,7 @@ impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for 
 impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>> for usize {
     type Output = Param::Ref<'s>;
     fn get(self, slice: &ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
-        if self > slice.len {
+        if self >= slice.len {
             return None;
         }
 
@@ -508,7 +532,7 @@ impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>> f
 impl<'s, Param: ParallelParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>> for usize {
     type Output = Param::RefMut<'s>;
     fn get_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
-        if self > slice.len {
+        if self >= slice.len {
             return None;
         }
 
@@ -524,7 +548,7 @@ impl<'s, Param: ParallelParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>
 impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for Range<usize> {
     type Output = ParallelSlice<'s, Param>;
     fn get(self, slice: &ParallelSlice<'s, Param>) -> Option<Self::Output> {
-        if self.start > slice.len || self.end > slice.len {
+        if self.start >= slice.len || self.end >= slice.len {
             return None;
         }
 
@@ -550,7 +574,7 @@ impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSlice<'s, Param>> for 
 impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>> for Range<usize> {
     type Output = ParallelSlice<'s, Param>;
     fn get(self, slice: &ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
-        if self.start > slice.len || self.end > slice.len {
+        if self.start >= slice.len || self.end >= slice.len {
             return None;
         }
 
@@ -576,7 +600,7 @@ impl<'s, Param: ParallelParam> ParallelSliceIndex<ParallelSliceMut<'s, Param>> f
 impl<'s, Param: ParallelParam> ParallelSliceIndexMut<ParallelSliceMut<'s, Param>> for Range<usize> {
     type Output = ParallelSliceMut<'s, Param>;
     fn get_mut(self, slice: &mut ParallelSliceMut<'s, Param>) -> Option<Self::Output> {
-        if self.start > slice.len || self.end > slice.len {
+        if self.start >= slice.len || self.end >= slice.len {
             return None;
         }
 
