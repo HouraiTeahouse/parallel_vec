@@ -80,7 +80,7 @@ impl<Param: ParallelParam> ParallelVec<Param> {
         }
     }
 
-    unsafe fn drop_range(&mut self, start: usize, end: usize) {
+    pub(crate) unsafe fn drop_range(&mut self, start: usize, end: usize) {
         let base = Param::as_ptr(self.storage);
         for idx in start..end {
             Param::drop(Param::add(base, idx));
@@ -345,7 +345,14 @@ impl<Param: ParallelParam> IntoIterator for ParallelVec<Param> {
     type Item = Param;
     type IntoIter = IntoIter<Param>;
     fn into_iter(self) -> Self::IntoIter {
-        IntoIter { vec: self, idx: 0 }
+        let iter = IntoIter { 
+		storage: self.storage,
+		capacity: self.capacity,
+		len: self.len,
+		idx: 0 
+	};
+	core::mem::forget(self);
+	iter
     }
 }
 
