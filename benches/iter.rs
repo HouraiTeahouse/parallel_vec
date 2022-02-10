@@ -198,7 +198,12 @@ fn bench_iter_4(c: &mut Criterion, size: usize) {
             }
         })
     });
-    let big = (Big::default(), Big::default(), Big::default(), Big::default());
+    let big = (
+        Big::default(),
+        Big::default(),
+        Big::default(),
+        Big::default(),
+    );
     let mut vec = Vec::from(vec![big]).repeat(size);
     c.bench_function(&format!("iter_vec_big_4x_{}", size), |b| {
         b.iter(|| {
@@ -249,7 +254,13 @@ fn bench_iter_5(c: &mut Criterion, size: usize) {
             }
         })
     });
-    let mixed = (Big::default(), Small(1), Big::default(), Small(2), Big::default());
+    let mixed = (
+        Big::default(),
+        Small(1),
+        Big::default(),
+        Small(2),
+        Big::default(),
+    );
     let mut vec = Vec::from(vec![mixed]).repeat(size);
     c.bench_function(&format!("iter_vec_mixed_5x_{}", size), |b| {
         b.iter(|| {
@@ -274,7 +285,13 @@ fn bench_iter_5(c: &mut Criterion, size: usize) {
             }
         })
     });
-    let big = (Big::default(), Big::default(), Big::default(), Big::default(), Big::default());
+    let big = (
+        Big::default(),
+        Big::default(),
+        Big::default(),
+        Big::default(),
+        Big::default(),
+    );
     let mut vec = Vec::from(vec![big]).repeat(size);
     c.bench_function(&format!("iter_vec_big_5x_{}", size), |b| {
         b.iter(|| {
