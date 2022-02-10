@@ -345,14 +345,14 @@ impl<Param: ParallelParam> IntoIterator for ParallelVec<Param> {
     type Item = Param;
     type IntoIter = IntoIter<Param>;
     fn into_iter(self) -> Self::IntoIter {
-        let iter = IntoIter { 
-		storage: self.storage,
-		capacity: self.capacity,
-		len: self.len,
-		idx: 0 
-	};
-	core::mem::forget(self);
-	iter
+        let iter = IntoIter {
+            storage: self.storage,
+            capacity: self.capacity,
+            len: self.len,
+            idx: 0,
+        };
+        core::mem::forget(self);
+        iter
     }
 }
 
