@@ -1,7 +1,9 @@
 use crate::iter::{Iter, IterMut};
 use crate::ParallelParam;
 use crate::{assert_in_bounds, assert_in_bounds_inclusive};
+use alloc::vec::Vec;
 use core::{
+    cmp::Ordering,
     hash::{Hash, Hasher},
     marker::PhantomData,
     ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo},
@@ -346,6 +348,122 @@ impl<'a, Param: ParallelParam> ParallelSliceMut<'a, Param> {
     #[inline]
     pub unsafe fn get_unchecked_mut(&mut self, index: usize) -> Param::RefMut<'_> {
         Param::as_mut(Param::ptr_at(self.storage, index))
+    }
+
+    /// Sorts the slice with a comparator function.
+    ///
+    /// This function will allocate `sizeof(usize) * self.len` bytes as an intermediate sorting
+    /// buffer.
+    ///
+    /// This defers to the `core` implemenation of [`slice::sort_by`], so any properties it
+    /// has will also hold for this function.
+    ///
+    /// [`slice::sort_by`]: https://doc.rust-lang.org/std/primitive.slice.html#method.sort_by
+    pub fn sort_by<F>(&mut self, f: F)
+    where
+        F: Fn(Param::Ref<'a>, Param::Ref<'a>) -> Ordering,
+    {
+        let base = Param::as_ptr(self.storage);
+        self.sort_via(|indices| {
+            indices.sort_by(|a, b| unsafe {
+                f(
+                    Param::as_ref(Param::add(base, *a)),
+                    Param::as_ref(Param::add(base, *b)),
+                )
+            });
+        });
+    }
+
+    /// Sorts the slice with a key extraction function.
+    ///
+    /// This function will allocate `sizeof(usize) * self.len` bytes as an intermediate sorting
+    /// buffer.
+    ///
+    /// This defers to the `core` implemenation of [`slice::sort_by_key`], so any properties it
+    /// has will also hold for this function.
+    ///
+    /// [`slice::sort_by`]: https://doc.rust-lang.org/std/primitive.slice.html#method.sort_by_key
+    pub fn sort_by_key<K, F>(&mut self, f: F)
+    where
+        F: Fn(Param::Ref<'a>) -> K,
+        K: Ord,
+    {
+        let base = Param::as_ptr(self.storage);
+        self.sort_via(|indices| {
+            indices.sort_by_key(|idx| unsafe { f(Param::as_ref(Param::add(base, *idx))) });
+        });
+    }
+
+    /// Sorts the slice with a comparator function, but might not preserve the order of equal
+    /// elements.
+    ///
+    /// This function will allocate `sizeof(usize) * self.len` bytes as an intermediate sorting
+    /// buffer.
+    ///
+    /// This defers to the `core` implemenation of [`slice::sort_unstable_by`], so any properties it
+    /// has will also hold for this function.
+    ///
+    /// [`slice::sort_unstable_by`]: https://doc.rust-lang.org/std/primitive.slice.html#method.sort_unstable_by
+    pub fn sort_unstable_by<F>(&mut self, f: F)
+    where
+        F: Fn(Param::Ref<'a>, Param::Ref<'a>) -> Ordering,
+    {
+        let base = Param::as_ptr(self.storage);
+        self.sort_via(|indices| {
+            indices.sort_unstable_by(|a, b| unsafe {
+                f(
+                    Param::as_ref(Param::add(base, *a)),
+                    Param::as_ref(Param::add(base, *b)),
+                )
+            });
+        });
+    }
+
+    /// Sorts the slice with a key extraction function, but might not preserve the order of equal
+    /// elements.
+    ///
+    /// This function will allocate `sizeof(usize) * self.len` bytes as an intermediate sorting
+    /// buffer.
+    ///
+    /// This defers to the `core` implemenation of [`slice::sort_unstable_by_key`], so any properties
+    /// it has will also hold this function.
+    ///
+    /// [`slice::sort_unstable_by_key`]: https://doc.rust-lang.org/std/primitive.slice.html#method.sort_unstable_by_key
+    pub fn sort_unstable_by_key<K, F>(&mut self, f: F)
+    where
+        F: Fn(Param::Ref<'a>) -> K,
+        K: Ord,
+    {
+        let base = Param::as_ptr(self.storage);
+        self.sort_via(|indices| {
+            indices.sort_unstable_by_key(|idx| unsafe { f(Param::as_ref(Param::add(base, *idx))) });
+        });
+    }
+
+    #[inline(always)]
+    fn sort_via<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut Vec<usize>),
+    {
+        if self.len < 2 {
+            return;
+        }
+
+        let mut indices: Vec<usize> = (0..self.len).collect();
+        f(&mut indices);
+
+        // SAFE: All of the indices used here are valid.
+        unsafe {
+            for src in 0..self.len {
+                let dst = *indices.get_unchecked(src);
+                if src == dst {
+                    continue;
+                }
+                self.swap_unchecked(src, dst);
+                // TODO: Use swap_unchecked here when stablized.
+                indices.swap(src, dst);
+            }
+        }
     }
 
     /// Returns a raw pointer to the slice’s buffer.
