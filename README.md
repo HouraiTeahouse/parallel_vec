@@ -54,3 +54,15 @@ allocator and heap support for this crate to work.
 ## `serde` Support 
 `ParallelVec` can be serialized if it's parameters can be serialized. This is disabled by
 default. Use the `serde` feature to enable support for serialization and deserialization.
+
+## Benchmarks
+To run benchmarks, use `cargo bench`. The benchmarks for this crate directly compares the
+iteration and `get` performance of `ParallelVec` and it's `Vec` equivalent on small structs,
+big structs, and a mix of both.
+
+Generally, `ParallelVec` achieves similar performance to `Vec` when the entire buffer can 
+fit into cache. Once the backing store grows larger than cache, or if there are other 
+operations competing for cache space, `ParallelVec` achieves higher iteration speeds than 
+its `Vec` equivalent, particularly as the size of the elements increases. Conversely,
+`ParallelVec` performance falls off relative to it's `Vec` equivalent as the size of the
+overall buffer increases.
