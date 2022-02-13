@@ -226,9 +226,10 @@ impl<Param: ParallelParam> ParallelVec<Param> {
     /// sufficient.
     pub fn reserve(&mut self, additional: usize) {
         unsafe {
-            let new_len = self.len + additional;
-            if new_len > self.capacity {
-                let capacity = new_len.next_power_of_two().max(4);
+            let new_capacity = self.len.checked_add(additional).expect("capacity overflow");
+            if new_capacity > self.capacity {
+                let capacity = new_capacity.next_power_of_two().max(4);
+                assert!(capacity > self.len, "capacity overflow");
                 let dst = Param::alloc(capacity);
                 let src = self.as_mut_ptrs();
                 Param::copy_to_nonoverlapping(src, Param::as_ptr(dst), self.len);
@@ -1195,5 +1196,21 @@ mod tests {
         assert_eq!(b.next(), Some(&8));
         assert_eq!(b.next(), None);
         assert_eq!(b.next(), None);
+    }
+
+    #[test]
+    #[should_panic]
+    fn reserve_overflow_negative() {
+        let mut v = ParallelVec::new();
+        (1..8).for_each(|i| v.push((i, i)));
+        v.reserve(usize::MAX - 8);
+    }
+
+    #[test]
+    #[should_panic]
+    fn reserve_overflow() {
+        let mut v = ParallelVec::new();
+        (1..8).for_each(|i| v.push((i, i)));
+        v.reserve(usize::MAX);
     }
 }
