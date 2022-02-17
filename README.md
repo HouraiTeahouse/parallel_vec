@@ -1,7 +1,7 @@
 # ParallelVec
 
 [![crates.io](https://img.shields.io/crates/v/parallel-vec.svg)](https://crates.io/crates/parallel-vec)
-[![Documentation](https://docs.rs/parallel-vec/badge.svg)](https://docs.rs/parallel-vec)
+[![Documentation](https://docs.rs/parallel_vec/badge.svg)](https://docs.rs/parallel-vec)
 ![License](https://img.shields.io/crates/l/parallel-vec.svg)
 [![codecov](https://codecov.io/gh/HouraiTeahouse/parallel_vec/branch/main/graph/badge.svg?token=BEKDFDO5HW)](https://codecov.io/gh/HouraiTeahouse/parallel_vec)
 
