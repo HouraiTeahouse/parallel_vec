@@ -148,7 +148,7 @@ impl<Param: ParallelParam> Drop for IntoIter<Param> {
             for idx in self.idx..self.len {
                 Param::drop(Param::ptr_at(self.storage, idx));
             }
-            Param::dealloc(&mut self.storage, self.capacity);
+            Param::dealloc(self.storage, self.capacity);
         }
     }
 }

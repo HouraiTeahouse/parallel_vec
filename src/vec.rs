@@ -98,12 +98,8 @@ impl<Param: ParallelParam> ParallelVec<Param> {
             return;
         }
         let capacity = core::cmp::max(self.len, min_capacity);
-        let src = Param::as_ptr(self.storage);
         unsafe {
-            let dst = Param::alloc(capacity);
-            Param::copy_to_nonoverlapping(src, Param::as_ptr(dst), self.len);
-            Param::dealloc(&mut self.storage, self.capacity);
-            self.storage = dst;
+            self.storage = Param::realloc(self.storage, self.capacity, capacity);
         }
         self.capacity = capacity;
     }
@@ -229,12 +225,8 @@ impl<Param: ParallelParam> ParallelVec<Param> {
             let new_capacity = self.len.checked_add(additional).expect("capacity overflow");
             if new_capacity > self.capacity {
                 let capacity = new_capacity.next_power_of_two().max(4);
-                assert!(capacity > self.len, "capacity overflow");
-                let dst = Param::alloc(capacity);
-                let src = self.as_mut_ptrs();
-                Param::copy_to_nonoverlapping(src, Param::as_ptr(dst), self.len);
-                Param::dealloc(&mut self.storage, self.capacity);
-                self.storage = dst;
+                debug_assert!(capacity > self.len, "capacity overflow");
+                self.storage = Param::realloc(self.storage, self.capacity, capacity);
                 self.capacity = capacity;
             }
         }
@@ -268,7 +260,7 @@ impl<Param: ParallelParam> Drop for ParallelVec<Param> {
         self.len = 0;
         unsafe {
             self.drop_range(0, end);
-            Param::dealloc(&mut self.storage, self.capacity);
+            Param::dealloc(self.storage, self.capacity);
         }
     }
 }

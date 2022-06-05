@@ -1,6 +1,6 @@
 use super::{ParallelVec, ParallelVecConversionError};
 use alloc::{
-    alloc::{alloc, dealloc, Layout},
+    alloc::{alloc, dealloc, handle_alloc_error, realloc, Layout},
     vec::Vec,
 };
 use core::ptr::NonNull;
@@ -52,6 +52,15 @@ pub unsafe trait ParallelParam: Sized + private::Sealed {
     /// Capacity should be non-zero.
     unsafe fn alloc(capacity: usize) -> Self::Storage;
 
+    /// Realloc a buffer allocated from [`alloc`].
+    ///
+    /// # Safety
+    /// `storage` must have been allocated from [`alloc`] or [`realloc`] alongside
+    /// the provided `current_capacity`.
+    ///
+    /// [`alloc`]: Self::alloc
+    unsafe fn realloc(storage: Self::Storage, current_capacity: usize, new_capacity: usize) -> Self::Storage;
+
     /// Deallocates a buffer allocated from [`alloc`].
     ///
     /// # Safety
@@ -59,7 +68,7 @@ pub unsafe trait ParallelParam: Sized + private::Sealed {
     /// the provided `capacity`.
     ///
     /// [`alloc`]: Self::alloc
-    unsafe fn dealloc(storage: &mut Self::Storage, capacity: usize);
+    unsafe fn dealloc(storage: Self::Storage, capacity: usize);
 
     /// Gets the pointer at a given index.
     ///
@@ -71,9 +80,6 @@ pub unsafe trait ParallelParam: Sized + private::Sealed {
     unsafe fn ptr_at(storage: Self::Storage, idx: usize) -> Self::Ptr {
         Self::add(Self::as_ptr(storage), idx)
     }
-
-    /// Creates a layout for a [`ParallelVec`] for a given `capacity`
-    fn layout_for_capacity(capacity: usize) -> MemoryLayout<Self>;
 
     /// Gets the legnth for the associated `Vec`s.
     ///
@@ -182,15 +188,6 @@ pub unsafe trait ParallelParam: Sized + private::Sealed {
     unsafe fn drop(ptr: Self::Ptr);
 }
 
-/// Memory layout information for creating a [`ParallelVec`].
-///
-/// Users will not need to deal with this type directly, as there
-/// is no way to instantiate a copy of this struct safely.
-pub struct MemoryLayout<Param: ParallelParam> {
-    layout: Layout,
-    offsets: Param::Offsets,
-}
-
 mod private {
     pub trait Sealed {}
 
@@ -245,29 +242,69 @@ macro_rules! impl_parallel_vec_param {
             }
 
             unsafe fn alloc(capacity: usize) -> Self::Storage {
-                let layout = Self::layout_for_capacity(capacity);
-                let bytes = alloc(layout.layout);
-                let (_ $(, $ts)*) = layout.offsets;
-                (
-                    NonNull::new_unchecked(bytes.cast::<$t1>())
-                    $(, NonNull::new_unchecked(bytes.add($ts).cast::<$ts>()))*
-                )
+                debug_assert!(capacity != 0);
+                let $t1 = if core::mem::size_of::<$t1>() != 0 {
+                    let layout = Layout::array::<$t1>(capacity).unwrap();
+                    let ptr = alloc(layout).cast::<$t1>();
+                    NonNull::new(ptr).unwrap_or_else(|| handle_alloc_error(layout))
+                } else {
+                    NonNull::dangling()
+                };
+                $(
+                    let $ts = if core::mem::size_of::<$ts>() != 0 {
+                        let layout = Layout::array::<$ts>(capacity).unwrap();
+                        let ptr = alloc(layout).cast::<$ts>();
+                        NonNull::new(ptr).unwrap_or_else(|| handle_alloc_error(layout))
+                    } else {
+                        NonNull::dangling()
+                    };
+                )*
+                ($t1 $(, $ts)*)
             }
 
-            unsafe fn dealloc(storage: &mut Self::Storage, capacity: usize) {
-                if capacity > 0 {
-                    let layout = Self::layout_for_capacity(capacity);
-                    dealloc(storage.0.as_ptr().cast::<u8>(), layout.layout);
+            unsafe fn realloc(storage: Self::Storage, current_capacity: usize, new_capacity: usize) -> Self::Storage {
+                if new_capacity == 0 {
+                    Self::dealloc(storage, current_capacity);
+                    return Self::dangling();
                 }
+                if current_capacity == 0 {
+                    return Self::alloc(new_capacity);
+                }
+                let ($t1 $(, $ts)*) = storage;
+                let $t1 = if core::mem::size_of::<$t1>() != 0 {
+                    let layout = Layout::array::<$t1>(current_capacity).unwrap();
+                    let new_size = core::mem::size_of::<$t1>().checked_mul(new_capacity).unwrap();
+                    let ptr = realloc($t1.as_ptr().cast::<u8>(), layout, new_size).cast::<$t1>();
+                    NonNull::new(ptr).unwrap_or_else(|| handle_alloc_error(layout))
+                } else {
+                    $t1
+                };
+                $(
+                    let $ts = if core::mem::size_of::<$ts>() != 0 {
+                        let layout = Layout::array::<$ts>(current_capacity).unwrap();
+                        let new_size = core::mem::size_of::<$ts>().checked_mul(new_capacity).unwrap();
+                        let ptr = realloc($ts.as_ptr().cast::<u8>(), layout, new_size).cast::<$ts>();
+                        NonNull::new(ptr).unwrap_or_else(|| handle_alloc_error(layout))
+                    } else {
+                        $ts
+                    };
+                )*
+                ($t1 $(, $ts)*)
             }
 
-            fn layout_for_capacity(capacity: usize) -> MemoryLayout<Self> {
-                let layout = Layout::array::<$t1>(capacity).unwrap();
-                $(let (layout, $ts) = layout.extend(Layout::array::<$ts>(capacity).unwrap()).unwrap();)*
-                MemoryLayout {
-                    layout,
-                    offsets: (0, $($ts),*)
+            unsafe fn dealloc(storage: Self::Storage, capacity: usize) {
+                if capacity == 0 {
+                    return;
                 }
+                let ($t1 $(, $ts)*) = storage;
+                if core::mem::size_of::<$t1>() != 0 {
+                    dealloc($t1.as_ptr().cast::<u8>(), Layout::array::<$t1>(capacity).unwrap_unchecked());
+                }
+                $(
+                    if core::mem::size_of::<$ts>() != 0 {
+                        dealloc($ts.as_ptr().cast::<u8>(), Layout::array::<$ts>(capacity).unwrap_unchecked());
+                    }
+                )*
             }
 
             #[inline(always)]
