@@ -59,7 +59,11 @@ pub unsafe trait ParallelParam: Sized + private::Sealed {
     /// the provided `current_capacity`.
     ///
     /// [`alloc`]: Self::alloc
-    unsafe fn realloc(storage: Self::Storage, current_capacity: usize, new_capacity: usize) -> Self::Storage;
+    unsafe fn realloc(
+        storage: Self::Storage,
+        current_capacity: usize,
+        new_capacity: usize,
+    ) -> Self::Storage;
 
     /// Deallocates a buffer allocated from [`alloc`].
     ///
