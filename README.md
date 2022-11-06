@@ -42,10 +42,6 @@ for (position, velocity, _) in entities.iter_mut() {
 entities.swap_remove(0);
 ```
 
-## Nightly
-This crate requires use of GATs and therefore requires the following nightly features:
- * `generic_associated_types`
-
 ## `no_std` Support 
 By default, this crate requires the standard library. Disabling the default features 
 enables this crate to compile in `#![no_std]` environments. There must be a set global

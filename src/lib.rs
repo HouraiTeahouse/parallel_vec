@@ -1,7 +1,5 @@
 #![allow(non_snake_case)]
 #![deny(missing_docs)]
-#![feature(generic_associated_types)]
-#![feature(doc_cfg)]
 #![no_std]
 
 //! [`ParallelVec`] is a generic collection of contiguously stored heterogenous values with
